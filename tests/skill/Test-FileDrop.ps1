@@ -69,7 +69,8 @@ function Activate($F){
 try{
     $env:FILE_API_KEY=$fakeKey
     $f=Fixture
-    Check (Run $f policy).mayTryNative 'native first'
+    $first=Run $f policy
+    Check $first.mayTryNative ('native first: '+$first.code)
     Check ((Run $f policy).action -eq 'verify') 'no duplicate unreported native attempt'
     $active=Run $f record -Outcome technical_failure
     Check ($active.success -and $active.mayUpload) 'clear technical failure persists fallback'

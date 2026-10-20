@@ -33,7 +33,7 @@ powershell.exe -NoProfile -File tests/skill/Test-FileDropSetup.ps1
 
 O primeiro cobre política de fallback e upload/GET com transporte fake. O segundo verifica gravação, chave DPAPI, preservação da configuração/estado, rotação, validação e concorrência. As fixtures têm somente credenciais fictícias e não abrem a janela nem acessam a rede.
 
-Na versão 1.2.0, a sintaxe dos scripts foi conferida no Windows PowerShell 5.1 e os pacotes foram comparados aos fontes. Os testes de execução desta atualização e a janela de onboarding ainda não foram validados; a execução dos testes aguarda autorização específica de processo neste ambiente.
+Validação da versão 1.2.0: **56 asserções do helper e 42 do onboarding aprovadas** no Windows PowerShell 5.1, com fixtures isoladas, credenciais fictícias e transporte fake. A execução ocorreu fora do sandbox após autorização específica, com RemoteSigned somente nos processos de teste; nenhuma política permanente foi alterada. Sintaxe e conteúdo dos pacotes também foram conferidos. A janela instalada ainda exige verificação manual.
 
 Não altere a política de execução para rodar testes sem autorização correspondente. Rede real, IIS, interface gráfica instalada e criação de junction real exigem validação separada. O onboarding nativo só fica verificado no host depois de instalar o pacote e executar sua configuração.
 
