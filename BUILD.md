@@ -51,9 +51,12 @@ Os pacotes locais atuais são:
 | Pacote | Conteúdo |
 | --- | --- |
 | `FileDropApi-IIS-net9-skill-v1.1.zip` | Binários da API e `web.config`, dependentes do Hosting Bundle 9 |
+| `FileDrop-plugin-v1.1.0.zip` | Plugin para a tela **Novo plugin**: manifesto e skill com helper |
 | `FileDrop-skill-v1.1.zip` | Pasta `filedrop`: instruções, configuração e helper |
 | `FileDrop-api-skill-source-v1.1.zip` | Fontes, testes, scripts e documentação atuais |
-| `FileDrop-api-skill-v1.1-SHA256.txt` | Hashes SHA-256 dos três ZIPs |
+| `FileDrop-api-skill-v1.1-SHA256.txt` | Hashes SHA-256 dos quatro ZIPs |
+
+Para o pacote de plugin, compacte somente `plugin.json` e os três arquivos de `skills/filedrop`, preservando esses caminhos dentro de uma única pasta `filedrop` no ZIP. O manifesto usa Agent Plugins 1.0; o código do helper é o mesmo da skill manual. Não inclua servidor, configuração local, credenciais, estado ou dependências.
 
 Para o pacote da skill, compacte somente `skills/filedrop` preservando a pasta `filedrop` na raiz do ZIP. Não inclua configuração de usuário, segredo ou estado.
 

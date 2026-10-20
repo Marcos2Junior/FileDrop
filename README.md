@@ -12,7 +12,13 @@ A API precisa estar publicada e acessível. Se você também administra o servid
 
 O computador do agente precisa de **Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2 ou superior e execução de scripts autorizada**. Não é necessário compilar a skill nem instalar SDK ou PowerShell 7. Se a política bloquear scripts, obtenha autorização conforme as regras do computador; a skill não altera essa política.
 
-### 1. Copie a pasta da skill
+### 1. Adicione o plugin no Codex
+
+Se recebeu `FileDrop-plugin-v1.1.0.zip`, abra **Plugins > Adicionar > Novo plugin**, selecione esse ZIP e conclua a instalação. Ele contém a skill e seu helper; não há processo adicional para iniciar. Use o ZIP inteiro, sem extrair, nessa tela.
+
+`FileDrop-skill-v1.1.zip` é para cópia manual e não tem o manifesto de plugin. Não use esse pacote na tela **Novo plugin**. O [formato oficial de plugin](https://developers.openai.com/plugins/build/plugins) exige `plugin.json` e a skill dentro de `skills/`.
+
+Alternativa manual, se preferir não instalar como plugin:
 
 Baixe os fontes pelo GitHub (**Code > Download ZIP**) e extraia. Copie `skills\filedrop` para:
 
@@ -22,7 +28,7 @@ Baixe os fontes pelo GitHub (**Code > Download ZIP**) e extraia. Copie `skills\f
 
 Se recebeu o pacote `FileDrop-skill-v1.1.zip`, copie a pasta `filedrop` que está dentro dele. Se já existir uma instalação, compare antes de substituir.
 
-Confira se a pasta final contém `SKILL.md`, `setup.md` e `scripts\filedrop.ps1`. Esse é o [diretório pessoal de skills do Codex](https://learn.chatgpt.com/docs/build-skills).
+Confira se a pasta final contém `SKILL.md`, `setup.md` e `scripts\filedrop.ps1`. Esse é o [diretório pessoal de skills do Codex](https://learn.chatgpt.com/docs/build-skills). Escolha uma das formas de instalação para evitar duas cópias da mesma skill.
 
 ### 2. Informe endereço, pastas e chave
 
@@ -44,7 +50,7 @@ Se `FILE_API_KEY` já estiver no ambiente herdado pelo Codex, ela tem precedênc
 
 ### 3. Abra o Codex e peça uma entrega
 
-Abra o Codex normalmente. Peça, por exemplo: `Use $filedrop para entregar o arquivo solicitado, seguindo a preferência pelo envio nativo.` Se a skill não aparecer, reinicie o Codex e confira a pasta do passo 1.
+Abra uma conversa com o plugin **FileDrop** selecionado. Na instalação manual, invoque `$filedrop` quando necessário. Peça a entrega seguindo a preferência pelo envio nativo. Se não aparecer, reinicie o Codex e confira a instalação do passo 1.
 
 A skill orienta o agente; ela não captura screenshots nem observa as ferramentas nativas sozinha. Quando o FileDrop for usado, o helper envia o arquivo, confere o download e retorna o link e a expiração. Somente arquivos solicitados podem ser enviados.
 

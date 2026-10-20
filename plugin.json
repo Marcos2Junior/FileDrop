@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "filedrop",
+  "version": "1.1.0",
+  "description": "Entrega de arquivos pelo Codex: envio nativo primeiro e FileDrop após uma falha técnica clara, com preferência persistida por 24 horas.",
+  "author": { "name": "Marcos2Junior" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "FileDrop",
+        "shortDescription": "Entrega de arquivos por link",
+        "longDescription": "Skill para o Codex no Windows. Usa a API FileDrop existente para entregar arquivos solicitados após falha técnica do envio nativo. Requer Windows PowerShell 5.1 e configuração local de endereço, pastas permitidas e chave de POST. A instalação do plugin não configura credenciais nem altera a política de execução.",
+        "developerName": "Marcos2Junior",
+        "capabilities": [],
+        "defaultPrompt": "Entregue o arquivo solicitado com FileDrop, seguindo a preferência pelo envio nativo primeiro."
+      }
+    }
+  }
+}

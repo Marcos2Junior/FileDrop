@@ -2,7 +2,13 @@
 
 A API deve estar publicada e acessível antes de usar a skill. O cliente requer **Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2 ou superior e execução de scripts autorizada**. Não precisa compilar nem instalar SDK ou PowerShell 7.
 
-## 1. Copie a pasta
+## 1. Instale o plugin ou copie a skill
+
+Para usar a tela de plugins do Codex, selecione **Plugins > Adicionar > Novo plugin** e envie `FileDrop-plugin-v1.1.0.zip` inteiro, sem extrair. O Codex instala a skill e o helper incluídos no plugin. Nenhuma configuração de usuário, chave ou política do Windows vem no pacote.
+
+O pacote `FileDrop-skill-v1.1.zip` serve somente para cópia manual; ele não contém o manifesto exigido por essa tela. Se o plugin já foi instalado, pule a cópia abaixo e vá ao passo 2. Mantenha uma única instalação para evitar skills duplicadas.
+
+Alternativa manual:
 
 Copie a pasta `filedrop` deste pacote para:
 
@@ -44,7 +50,7 @@ Opções para quem precisa: `SecretFile` no JSON pode indicar outro arquivo abso
 
 ## 3. Abra o Codex normalmente
 
-Peça uma entrega usando `$filedrop`. Se a skill não aparecer, reinicie o Codex e confira a pasta instalada. A descoberta da skill não garante que todo agente sempre siga a instrução: ela orienta o fluxo e o helper registra os resultados explicitamente.
+Selecione o plugin **FileDrop** em uma conversa e peça uma entrega. Se instalou a skill manualmente, invoque `$filedrop`. Se não aparecer, reinicie o Codex e confira a instalação. A descoberta da skill não garante que todo agente sempre siga a instrução: ela orienta o fluxo e o helper registra os resultados explicitamente.
 
 O nativo é a primeira opção. Uma falha técnica clara ativa FileDrop por 24h naquele canal/capacidade e durante a tarefa ativa. Negação, cancelamento ou confirmação pendente não autorizam trocar de método. Entrega incerta exige verificar antes de repetir. O helper não captura imagens nem envia arquivos espontaneamente.
 
@@ -66,4 +72,4 @@ A saída é JSON; falha retorna código de saída 1. Não há redirects nem retr
 
 ## Remover
 
-Encerre as tarefas e remova a pasta instalada da skill. Após revisar, remova também sua configuração e arquivo de segredo local se não forem mais necessários. Isso não altera a API nem apaga os arquivos do servidor.
+Encerre as tarefas. Se instalou pelo menu de plugins, desinstale **FileDrop** nesse menu; na instalação manual, remova somente a pasta instalada da skill. Após revisar, remova também sua configuração e arquivo de segredo local se não forem mais necessários. Isso não altera a API nem apaga os arquivos do servidor.
