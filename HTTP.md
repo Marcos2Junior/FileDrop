@@ -1,21 +1,24 @@
-# HTTP externo explícito
+# Habilitar HTTP explicitamente
 
-HTTPS continua padrão. HTTP expõe chave de POST, arquivo e segredo do link no tráfego; a criptografia em disco não protege o transporte.
+HTTPS é o padrão. HTTP expõe a chave de POST, o arquivo e o segredo do link no tráfego. A criptografia em disco não protege o transporte.
 
-Na API publicada, configure:
+## Servidor
 
-    Files__PublicBaseUrl=http://files.example.invalid:4958
-    Files__AllowInsecureHttp=true
+No ambiente da API, configure:
 
-Continue configurando Files__ApiKey e Files__StorageDirectory. A base não inclui /files. Recicle o pool depois. PublicBaseUrl só monta links; não cria binding/listener IIS.
+```text
+Files__PublicBaseUrl=http://files.example.invalid:4958
+Files__AllowInsecureHttp=true
+```
 
-No config.json da skill, preserve Roots e altere:
+A base não inclui `/files`. Mantenha `Files__ApiKey` e `Files__StorageDirectory`. Recicle o pool após alterar a configuração. PublicBaseUrl só monta links; o binding/listener IIS precisa estar configurado manualmente.
 
-    "ApiEndpoint": "http://files.example.invalid:4958/files",
-    "AllowInsecureHttp": true
+## Cliente
 
-Esses são campos do objeto existente. Substitua o domínio fictício pelo endereço escolhido. A próxima chamada lê a configuração; não há processo local a reiniciar. Se mudar uma variável de ambiente herdada, reinicie o Codex.
+Execute novamente o onboarding do plugin. Informe o endereço final com `/files` e marque **Permitir HTTP**. Deixe a chave vazia para manter a credencial existente.
 
-Sem opt-in, o cliente rejeita HTTP. A API preserva a exceção loopback antiga. Userinfo/query/fragmento continuam proibidos na configuração. Respostas devem manter esquema, host, porta e caminho configurados. Redirects seguem bloqueados e nenhuma validação de certificado HTTPS é desligada.
+Em instalação manual avançada, os campos equivalentes do JSON são `ApiEndpoint` com URL HTTP e `AllowInsecureHttp: true`. Preserve os outros campos e o estado. A próxima chamada lê a configuração.
 
-Para retornar a HTTPS, altere as duas URLs e desative AllowInsecureHttp. Links antigos não são reescritos. Veja README.md e skills/filedrop/setup.md.
+Sem opt-in, o cliente rejeita HTTP. A API também aceita HTTP loopback sem essa opção. Credenciais na URL, query e fragmento continuam proibidos na configuração. A resposta precisa manter esquema, host, porta e caminho configurados; redirects permanecem bloqueados. Nenhuma validação de certificado HTTPS é desligada.
+
+Para voltar a HTTPS, altere as duas URLs e desative o opt-in. Links anteriores não são reescritos. Veja [README](README.md) e [configuração do cliente](skills/filedrop/setup.md).

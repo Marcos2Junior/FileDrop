@@ -1,12 +1,10 @@
-# Desenvolvimento e pacotes
+# Desenvolvimento
 
-Este guia é para quem vai compilar ou modificar o projeto. Para usar a skill pronta, siga o [README](README.md).
+Para instalar e usar, veja o [README](README.md). Os pacotes prontos estão em [packages](packages).
 
 ## API
 
-Requisitos: Windows x64, SDK **10.0.401** ou patch compatível da linha 10.0.4xx conforme `global.json`, e runtime/ASP.NET Core **9 x64**. O alvo da API é `net9.0`. O `NuGet.Config` usa somente nuget.org; os lockfiles são versionados.
-
-Na raiz do projeto:
+O alvo é `net9.0`. Requer Windows x64, SDK **10.0.401** ou patch 10.0.4xx compatível com `global.json`, e runtime/ASP.NET Core **9 x64**. O NuGet usa somente nuget.org, com lockfiles versionados.
 
 ```powershell
 dotnet restore ScreenshotApi.sln --locked-mode
@@ -14,52 +12,58 @@ dotnet build ScreenshotApi.sln -c Release --no-restore -m:1 -nr:false -p:BuildIn
 dotnet test --solution ScreenshotApi.sln -c Release --no-build --no-restore
 ```
 
-Como alternativa ao runner integrado, o executável xUnit v3 compilado executa os mesmos testes:
+Alternativa: execute diretamente o runner xUnit v3 compilado, que contém os mesmos testes:
 
 ```powershell
 dotnet tests/ScreenshotApi.Tests/bin/Release/net9.0/ScreenshotApi.Tests.dll -noLogo -result-xml TestResults/api-tests.xml
 ```
 
-Última validação: **70 testes aprovados**, build sem erros ou avisos. Os testes HTTP usam TestServer em processo, sem porta real. Cobrem contrato, limites, autenticação, criptografia, adulteração, retenção e HTTP opt-in.
+A API tem 70 testes aprovados na última execução, sem mudança de código nesta atualização do cliente. Os testes HTTP usam TestServer em processo, sem porta real.
 
-.NET 9 tem suporte até **10/11/2026**; planeje atualizar o alvo e o Hosting Bundle. [Política oficial de suporte](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
+.NET 9 tem suporte até **10/11/2026**; planeje atualizar o alvo e o Hosting Bundle. [Política oficial](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
 
-## Skill
+## Cliente e onboarding
 
-Não precisa compilar. Requer Windows PowerShell 5.1, .NET Framework 4.7.2+ e execução de scripts autorizada pela política local:
+Requer Windows PowerShell 5.1, .NET Framework 4.7.2+ e execução de scripts autorizada:
 
 ```powershell
 powershell.exe -NoProfile -File tests/skill/Test-FileDrop.ps1
+powershell.exe -NoProfile -File tests/skill/Test-FileDropSetup.ps1
 ```
 
-Última validação: **54 asserções aprovadas** com arquivos fictícios e transporte fake, sem API pública. Inclui cooldown de 24h, tarefa ativa, escopos independentes, HTTP opt-in, upload/GET e hash, erros sem reenvio, caminhos, limite, lock/estado e saída JSON do comando.
+O primeiro cobre política de fallback e upload/GET com transporte fake. O segundo verifica gravação, chave DPAPI, preservação da configuração/estado, rotação, validação e concorrência. As fixtures têm somente credenciais fictícias e não abrem a janela nem acessam a rede.
 
-Esses testes foram executados com autorização específica somente para os processos de teste. Isso não habilitou scripts para uso normal nem alterou política permanente. Uma nova execução depende da política/autorização vigente; não contorne bloqueios. Rede real, IIS e criação de junction real não foram validados.
+Na versão 1.2.0, a sintaxe dos scripts foi conferida no Windows PowerShell 5.1 e os pacotes foram comparados aos fontes. Os testes de execução desta atualização e a janela de onboarding ainda não foram validados; a execução dos testes aguarda autorização específica de processo neste ambiente.
 
-## Gerar pacotes
+Não altere a política de execução para rodar testes sem autorização correspondente. Rede real, IIS, interface gráfica instalada e criação de junction real exigem validação separada. O onboarding nativo só fica verificado no host depois de instalar o pacote e executar sua configuração.
 
-Para preparar a publicação da API, escolha uma pasta de saída nova, sem dados ou configuração real:
+## Atualizar os dois pacotes distribuídos
+
+Os nomes estáveis ficam versionados junto com os fontes:
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| [Plugin](packages/FileDrop-plugin.zip) | Manifesto, skills de entrega/setup e scripts |
+| [API IIS](packages/FileDropApi-IIS.zip) | Publicação ASP.NET Core, dependente do Hosting Bundle 9 |
+| [Hashes](packages/SHA256SUMS.txt) | SHA-256 dos dois ZIPs |
+
+A versão do plugin fica em `plugin.json`. Ao lançar uma alteração, incremente-a e regenere o ZIP.
+
+Para empacotar o plugin a partir da raiz, em uma sessão com execução autorizada:
+
+```powershell
+Compress-Archive -LiteralPath plugin.json,skills -DestinationPath packages/FileDrop-plugin.zip -Force
+```
+
+Esse ZIP contém somente o manifesto e os arquivos das skills. Não coloque configuração, chaves, estado, logs ou dependências em `skills`.
+
+Se o código da API mudou, publique em uma pasta de saída nova, fora de dados/configuração reais:
 
 ```powershell
 dotnet publish src/ScreenshotApi/ScreenshotApi.csproj -c Release --no-restore -o artifacts/publish/api
+Compress-Archive -Path artifacts/publish/api/* -DestinationPath packages/FileDropApi-IIS.zip -Force
 ```
 
-Compacte o conteúdo publicado preservando o `web.config` gerado. A instalação IIS é manual conforme [SERVER.md](SERVER.md).
+Preserve o `web.config` gerado. Atualizar somente o cliente não exige gerar/publicar outra API. Após alterar pacotes, atualize `packages/SHA256SUMS.txt` com `Get-FileHash -Algorithm SHA256` e confira o conteúdo dos ZIPs antes do commit.
 
-Os pacotes locais atuais são:
-
-| Pacote | Conteúdo |
-| --- | --- |
-| `FileDropApi-IIS-net9-skill-v1.1.zip` | Binários da API e `web.config`, dependentes do Hosting Bundle 9 |
-| `FileDrop-plugin-v1.1.0.zip` | Plugin para a tela **Novo plugin**: manifesto e skill com helper |
-| `FileDrop-skill-v1.1.zip` | Pasta `filedrop`: instruções, configuração e helper |
-| `FileDrop-api-skill-source-v1.1.zip` | Fontes, testes, scripts e documentação atuais |
-| `FileDrop-api-skill-v1.1-SHA256.txt` | Hashes SHA-256 dos quatro ZIPs |
-
-Para o pacote de plugin, compacte somente `plugin.json` e os três arquivos de `skills/filedrop`, preservando esses caminhos dentro de uma única pasta `filedrop` no ZIP. O manifesto usa Agent Plugins 1.0; o código do helper é o mesmo da skill manual. Não inclua servidor, configuração local, credenciais, estado ou dependências.
-
-Para o pacote da skill, compacte somente `skills/filedrop` preservando a pasta `filedrop` na raiz do ZIP. Não inclua configuração de usuário, segredo ou estado.
-
-Para o pacote de fontes, use uma lista explícita de arquivos revisados. Exclua `.git`, `bin`, `obj`, caches, `artifacts`, logs, resultados gerados, perfis de publicação, arquivos `.user`, configuração local, dados e credenciais. Os pacotes não são enviados automaticamente ao GitHub.
-
-Compilar ou empacotar não instala a skill nem publica a API.
+Somente esses dois ZIPs de distribuição são permitidos no Git. Perfis de publicação, `.user`, caches, builds intermediários, arquivos recebidos e credenciais permanecem excluídos. Gerar pacotes não instala o plugin nem publica a API.

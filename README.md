@@ -1,88 +1,77 @@
 # FileDrop
 
-Entregue arquivos pelo Codex usando uma **API no servidor** e uma **skill no computador do agente**.
+Uma **API no servidor** guarda os arquivos; um **plugin no Codex do agente** entrega os links.
 
-A API recebe arquivos de até **100 MiB**, salva somente conteúdo criptografado e devolve um link válido por **sete dias**. Cada arquivo tem uma chave aleatória, presente apenas no link. **Quem tem o link pode abrir e compartilhar o arquivo; perder o link impede recuperá-lo.**
+A API aceita qualquer arquivo de até **100 MiB**, salva somente conteúdo criptografado e expira o acesso em **sete dias**. Cada arquivo tem uma chave aleatória, presente apenas no link. **Quem tem o link pode ler e compartilhar o arquivo. Sem o link, não há recuperação.**
 
-A skill tenta a entrega nativa primeiro. Na primeira falha técnica clara, passa a usar o FileDrop por **24 horas e até encerrar a tarefa ativa**. Esse intervalo controla a escolha da entrega; não altera os sete dias de retenção dos arquivos.
+O agente prefere o envio nativo. Na primeira falha técnica clara, usa FileDrop por **24 horas e durante a tarefa ativa**, sem insistir no método que falhou. Esse intervalo não altera os sete dias de retenção.
 
-## Comece pela skill: três passos
+## Instalar em três passos
 
-A API precisa estar publicada e acessível. Se você também administra o servidor, siga primeiro [Publicar a API no IIS](SERVER.md).
+Antes de começar, a API deve estar publicada. Quem administra o servidor segue [SERVER.md](SERVER.md).
 
-O computador do agente precisa de **Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2 ou superior e execução de scripts autorizada**. Não é necessário compilar a skill nem instalar SDK ou PowerShell 7. Se a política bloquear scripts, obtenha autorização conforme as regras do computador; a skill não altera essa política.
+O cliente precisa de **Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2+ e execução de scripts autorizada**. Não precisa compilar nem instalar SDK ou PowerShell 7.
 
-### 1. Adicione o plugin no Codex
+### 1. Baixe e instale o plugin
 
-Se recebeu `FileDrop-plugin-v1.1.0.zip`, abra **Plugins > Adicionar > Novo plugin**, selecione esse ZIP e conclua a instalação. Ele contém a skill e seu helper; não há processo adicional para iniciar. Use o ZIP inteiro, sem extrair, nessa tela.
+Baixe [o pacote do plugin](packages/FileDrop-plugin.zip). No GitHub, abra o arquivo e use **Download raw**; outra opção é **Code > Download ZIP** e procurar a pasta `packages`.
 
-`FileDrop-skill-v1.1.zip` é para cópia manual e não tem o manifesto de plugin. Não use esse pacote na tela **Novo plugin**. O [formato oficial de plugin](https://developers.openai.com/plugins/build/plugins) exige `plugin.json` e a skill dentro de `skills/`.
+No Codex, abra **Plugins > Adicionar > Novo plugin**, escolha o ZIP do plugin inteiro, sem extrair, e conclua. Os [pacotes prontos](packages) fazem parte do repositório; não é necessário procurar arquivos de build na sua máquina.
 
-Alternativa manual, se preferir não instalar como plugin:
+### 2. Execute a configuração inicial
 
-Baixe os fontes pelo GitHub (**Code > Download ZIP**) e extraia. Copie `skills\filedrop` para:
+Abra a configuração inicial do plugin (**Setup/Configurar**, quando exibida). Se não aparecer, selecione o plugin FileDrop em uma conversa e peça: `Execute o onboarding do FileDrop.`
 
-```text
-%USERPROFILE%\.agents\skills\filedrop
-```
+O agente abre uma janela local. Preencha:
 
-Se recebeu o pacote `FileDrop-skill-v1.1.zip`, copie a pasta `filedrop` que está dentro dele. Se já existir uma instalação, compare antes de substituir.
+- **Endereço da API:** URL final terminando em `/files`.
+- **Chave de POST:** a mesma configurada no servidor, digitada diretamente no campo mascarado.
+- **Pastas permitidas:** pastas locais existentes de onde o agente poderá entregar arquivos.
+- **Permitir HTTP:** marque apenas se o servidor usar HTTP e também estiver configurado para isso.
 
-Confira se a pasta final contém `SKILL.md`, `setup.md` e `scripts\filedrop.ps1`. Esse é o [diretório pessoal de skills do Codex](https://learn.chatgpt.com/docs/build-skills). Escolha uma das formas de instalação para evitar duas cópias da mesma skill.
+Clique em **Salvar**. O configurador grava os arquivos necessários automaticamente fora do Git e protege a chave para seu usuário do Windows com DPAPI. Não cole a chave na conversa. Nenhum arquivo é enviado durante o onboarding.
 
-### 2. Informe endereço, pastas e chave
+É necessário um desktop Windows interativo. Se uma política bloquear scripts, obtenha execução autorizada pelas regras do computador; o plugin não altera essa política. [Configuração e atualização](skills/filedrop/setup.md).
 
-Crie `%LOCALAPPDATA%\FileDropSkill\config.json` com este conteúdo, substituindo o endereço e a pasta pelos seus:
+### 3. Peça uma entrega
 
-```json
-{
-  "ApiEndpoint": "https://files.example.invalid/files",
-  "Roots": ["C:\\Agente\\Entregas"],
-  "AllowInsecureHttp": false
-}
-```
+Use uma conversa com FileDrop selecionado e peça a entrega do arquivo desejado. O agente tenta o nativo primeiro e, quando o fallback for autorizado pela política, o helper envia o arquivo, confere o download e devolve o link e a expiração.
 
-O endereço deve terminar em `/files`. A pasta em `Roots` deve existir: escolha somente as pastas locais cujos arquivos o agente poderá entregar. Links de pasta, como junctions e symlinks, não são aceitos.
+A skill orienta o agente; ela não captura screenshots nem observa ferramentas nativas sozinha. Somente arquivos solicitados podem ser enviados.
 
-Em um editor local, coloque a chave de POST fornecida pelo administrador em `%LOCALAPPDATA%\FileDropSkill\api-key.txt`, em uma única linha. Mantenha esse arquivo acessível somente ao seu usuário e fora do Git ou de pastas sincronizadas. **Não cole a chave no chat, em comandos ou no `config.json`.** A chave deve ser igual à configurada na API.
+## Pacotes disponíveis
 
-Se `FILE_API_KEY` já estiver no ambiente herdado pelo Codex, ela tem precedência sobre o arquivo. A configuração não contém chave pronta nem instala um cofre. [Opções e troca de configuração](skills/filedrop/setup.md).
-
-### 3. Abra o Codex e peça uma entrega
-
-Abra uma conversa com o plugin **FileDrop** selecionado. Na instalação manual, invoque `$filedrop` quando necessário. Peça a entrega seguindo a preferência pelo envio nativo. Se não aparecer, reinicie o Codex e confira a instalação do passo 1.
-
-A skill orienta o agente; ela não captura screenshots nem observa as ferramentas nativas sozinha. Quando o FileDrop for usado, o helper envia o arquivo, confere o download e retorna o link e a expiração. Somente arquivos solicitados podem ser enviados.
-
-## Servidor e desenvolvimento
-
-| Preciso de… | Documento |
+| Para quem | Download |
 | --- | --- |
-| Publicar/configurar a API no IIS | [SERVER.md](SERVER.md) |
-| Instalar, atualizar ou remover a skill | [setup.md](skills/filedrop/setup.md) |
-| Entender POST, GET e erros | [API.md](API.md) |
-| Habilitar HTTP explicitamente | [HTTP.md](HTTP.md) |
-| Compilar, testar ou gerar pacotes | [BUILD.md](BUILD.md) |
+| Usa o Codex | [Plugin com onboarding](packages/FileDrop-plugin.zip) |
+| Publica a API no IIS | [API pronta para publicação](packages/FileDropApi-IIS.zip) |
+| Confere integridade | [Hashes SHA-256](packages/SHA256SUMS.txt) |
 
-Os fontes estão prontos para copiar a skill. Quem precisa gerar o pacote da API deve seguir o guia de build; os ZIPs locais não são publicados automaticamente como downloads no GitHub.
+O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuração do IIS são manuais. Se a API já está na versão com HTTP opt-in e header `X-FileDrop-Expires-At`, a atualização do plugin não exige republicá-la.
 
-## Limites importantes
+## Mais informações
 
-- Negação de permissão, cancelamento e confirmação pendente não ativam fallback. Se uma entrega ficar incerta, verifique o resultado antes de repetir; não há retry automático de upload.
-- **HTTPS é o padrão.** HTTP exige opt-in no servidor e no cliente e expõe chave, arquivos e segredo dos links no tráfego. Veja [HTTP.md](HTTP.md).
-- Arquivos expiram sete dias após o upload. A exclusão ocorre ao iniciar a API e em varreduras enquanto ela roda; o download já recusa expirados entre varreduras.
-- Não há antivírus, busca de arquivos, galeria nem reprodução por intervalos de bytes. Tipos ativos ou desconhecidos são oferecidos como download. A API atende uma transferência por vez.
-- Criptografia em disco não protege contra acesso à memória do processo ou logs externos. Na publicação, omita segredos e query dos logs conforme [SERVER.md](SERVER.md).
+- [Servidor IIS](SERVER.md): publicação, variáveis, limite e logs.
+- [Configuração do cliente](skills/filedrop/setup.md): trocar URL/chave, instalação manual e opções avançadas.
+- [Contrato da API](API.md): POST, GET, criptografia e erros.
+- [HTTP explícito](HTTP.md): habilitar nos dois lados.
+- [Desenvolvimento](BUILD.md): compilar, testar e atualizar os pacotes.
 
-## Se algo não funcionar
+## Limites e problemas comuns
 
-| Sintoma | O que conferir |
+- Negação de permissão, cancelamento e confirmação pendente não ativam fallback. Entrega incerta precisa ser verificada antes de repetir. Não há retry automático de upload.
+- HTTPS é o padrão. HTTP expõe chave, arquivos e segredo dos links no tráfego.
+- A limpeza roda ao iniciar a API e periodicamente enquanto ela estiver ativa; o download recusa expirados mesmo entre varreduras.
+- Não há antivírus, galeria ou reprodução por intervalos de bytes. A API atende uma transferência por vez; formatos ativos/desconhecidos são oferecidos como download.
+- DPAPI protege a chave local em disco; não protege contra processos do mesmo usuário ou administrador monitorando a máquina. No servidor, omita query e segredos dos logs conforme [SERVER.md](SERVER.md).
+
+| Sintoma | Confira |
 | --- | --- |
-| Scripts desabilitados | Execução autorizada pela política local; não contorne o bloqueio |
-| 401 | Chave local igual a `Files__ApiKey` no servidor |
-| 413 | Arquivo de até 100 MiB e limite IIS/proxy de pelo menos 104923136 bytes |
-| Certificado ou redirect | Endereço final direto e certificado confiável |
-| `path_not_allowed` | Arquivo em uma pasta de `Roots`, existente e sem links |
-| Link 404 | Link completo, arquivo presente e ainda dentro dos sete dias |
-| `delivery_uncertain` | Verifique a entrega anterior antes de enviar novamente |
-| FileDrop continua após 24h | A tarefa ativa mantém a escolha até ser encerrada |
+| Scripts desabilitados | Execução autorizada pela política local |
+| 401 | Chave do cliente igual a `Files__ApiKey` do servidor |
+| 413 | Arquivo até 100 MiB; limite IIS/proxy de pelo menos 104923136 bytes |
+| Certificado/redirect | URL final direta e certificado confiável |
+| `path_not_allowed` | Arquivo em pasta permitida, existente e sem links de pasta |
+| Link 404 | Link completo e arquivo ainda dentro dos sete dias |
+| `delivery_uncertain` | Verificar a entrega anterior antes de reenviar |
+| Fallback após 24h | A tarefa ativa mantém a escolha até seu encerramento |

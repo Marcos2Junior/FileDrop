@@ -1,26 +1,49 @@
-# Instalar e configurar a skill
+# Configurar FileDrop
 
-A API deve estar publicada e acessível antes de usar a skill. O cliente requer **Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2 ou superior e execução de scripts autorizada**. Não precisa compilar nem instalar SDK ou PowerShell 7.
+Requisitos: API acessível, Windows x64, Windows PowerShell 5.1, .NET Framework 4.7.2+ e execução de scripts autorizada. A janela precisa de um desktop Windows interativo; não roda em um executor somente de terminal sem sessão gráfica.
 
-## 1. Instale o plugin ou copie a skill
+## Instalação e primeira configuração
 
-Para usar a tela de plugins do Codex, selecione **Plugins > Adicionar > Novo plugin** e envie `FileDrop-plugin-v1.1.0.zip` inteiro, sem extrair. O Codex instala a skill e o helper incluídos no plugin. Nenhuma configuração de usuário, chave ou política do Windows vem no pacote.
+Instale o ZIP de plugin pela tela **Plugins > Adicionar > Novo plugin**, sem extrair. Execute **Setup/Configurar** ou peça, em uma conversa com FileDrop selecionado: `Execute o onboarding do FileDrop.`
 
-O pacote `FileDrop-skill-v1.1.zip` serve somente para cópia manual; ele não contém o manifesto exigido por essa tela. Se o plugin já foi instalado, pule a cópia abaixo e vá ao passo 2. Mantenha uma única instalação para evitar skills duplicadas.
+O configurador incluído é:
 
-Alternativa manual:
-
-Copie a pasta `filedrop` deste pacote para:
-
-```text
-%USERPROFILE%\.agents\skills\filedrop
+```powershell
+powershell.exe -NoProfile -STA -File "<plugin>/skills/filedrop/scripts/Configure-FileDrop.ps1"
 ```
 
-Se estiver usando os fontes, a pasta de origem é `skills\filedrop`. Confira os três arquivos: `SKILL.md`, `setup.md` e `scripts\filedrop.ps1`. Compare antes de substituir uma instalação existente. A skill usa o [diretório pessoal suportado pelo Codex](https://learn.chatgpt.com/docs/build-skills), sem editar `config.toml` ou instruções globais.
+`<plugin>` é a pasta dos arquivos instalados, não um caminho literal. O agente deve localizar o arquivo empacotado. O usuário digita a chave diretamente no campo mascarado; não deve enviá-la na conversa ou em argumentos.
 
-## 2. Configure fora do Git
+Na janela, informe o endereço final com `/files`, a chave de POST e uma pasta existente por linha. Use **Adicionar pasta** para escolher. Se o endereço for HTTP, marque a opção explícita e habilite também `Files__AllowInsecureHttp=true` na API. HTTP expõe chave, conteúdo e segredo do link no tráfego.
 
-Crie `%LOCALAPPDATA%\FileDropSkill\config.json`, substituindo os valores fictícios:
+**Salvar** valida e grava a configuração, sem testar rede ou enviar arquivos. **Cancelar** não grava. O configurador não instala runtime, altera políticas, permissões ou variáveis globais.
+
+## Onde os dados ficam
+
+Por padrão, em `%LOCALAPPDATA%\FileDropSkill`:
+
+| Arquivo/pasta | Conteúdo |
+| --- | --- |
+| `config.json` | Endereço, pastas permitidas e referência ao arquivo de chave |
+| `api-key-*.dpapi` | Chave cifrada com DPAPI para o usuário atual do Windows |
+| `state` | Hashes, horários e estados de entrega, sem links, chaves, caminhos ou conteúdo |
+| `setup.lock` | Coordenação de gravações do configurador |
+
+A chave protegida depende do perfil do Windows; não basta copiar seu arquivo para outro usuário ou computador. Refaça o onboarding nesse caso. A proteção não impede acesso por processos do mesmo usuário ou por administradores que monitorem memória.
+
+## Trocar URL, chave ou pastas
+
+Execute novamente o onboarding. A URL e as pastas atuais aparecem; a chave nunca é exibida. Deixe o campo de chave vazio para manter a credencial existente. Digite uma nova chave para trocá-la.
+
+A próxima chamada usa a nova configuração. O estado de fallback permanece. A troca de chave cria outro arquivo protegido e preserva o anterior; revise arquivos antigos antes de removê-los manualmente. Se a gravação da configuração falhar depois da proteção, pode restar um arquivo cifrado sem referência.
+
+A variável `FILE_API_KEY`, quando herdada pelo Codex, tem prioridade. Se você a utiliza, mudar apenas o campo da janela não substitui essa variável; altere-a pelo mecanismo autorizado e reinicie o Codex para herdar o novo ambiente.
+
+Alterar a URL afeta novos uploads. Links já entregues continuam apontando ao endereço antigo. Trocar a chave de POST não muda os segredos individuais dos links.
+
+## Opções avançadas e compatibilidade
+
+A configuração é criada automaticamente. Para instalações manuais anteriores, os nomes exatos continuam:
 
 ```json
 {
@@ -30,46 +53,30 @@ Crie `%LOCALAPPDATA%\FileDropSkill\config.json`, substituindo os valores fictíc
 }
 ```
 
-- `ApiEndpoint`: endereço final da API, incluindo `/files`. Não pode conter usuário, senha, query ou fragmento e não deve redirecionar.
-- `Roots`: pastas locais existentes e estritamente necessárias para as entregas. Arquivos fora delas, caminhos de rede e symlinks/junctions não são aceitos.
-- `AllowInsecureHttp`: mantenha `false` para HTTPS. HTTP externo requer `true` aqui e `Files__AllowInsecureHttp=true` no servidor. HTTP expõe chave, arquivo e segredo do link no tráfego.
+`Roots` contém de 1 a 32 pastas locais existentes. Caminhos de rede, ADS, symlinks e junctions são rejeitados. A URL não aceita usuário, senha, query, fragmento ou redirecionamento.
 
-Para conferir apenas a sintaxe do JSON, use:
+O onboarding acrescenta `SecretFile` com o caminho do arquivo protegido e `SecretProtection: "CurrentUserDpapi"`. Não edite o arquivo cifrado nem troque o modo para tentar decodificá-lo.
+
+Instalações antigas com chave de uma linha em `api-key.txt` continuam funcionando, assim como `SecretFile` apontando para outro arquivo de texto local. A proteção padrão dessas instalações é `None`; digitar uma chave no onboarding migra o uso para DPAPI e preserva o arquivo antigo. Mantenha qualquer arquivo de segredo fora do Git/sincronização e com acesso restrito.
+
+`FILEDROP_SKILL_CONFIG` pode indicar outro caminho absoluto de configuração. O configurador não salva dentro de plugin ou repositório Git. Se essa variável mudar, reinicie o Codex. Não coloque segredos no JSON.
+
+Para instalar somente a skill manualmente, copie a pasta `skills/filedrop` dos fontes para `%USERPROFILE%\.agents\skills\filedrop` e execute o mesmo configurador pelo caminho copiado. Não mantenha essa cópia junto com o plugin instalado.
+
+## Verificação e erros
+
+Para conferir apenas a sintaxe do JSON:
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\FileDropSkill\config.json" -Raw | ConvertFrom-Json | Out-Null
 ```
 
-### Chave de POST
+Isso não testa credencial, rede ou entrega. O onboarding também não faz upload. Não invente falha nativa para testar FileDrop.
 
-Em um editor local, salve a chave fornecida pelo administrador em `%LOCALAPPDATA%\FileDropSkill\api-key.txt`, somente a chave em uma linha. Ela deve corresponder a `Files__ApiKey` na API. Restrinja o acesso ao seu usuário e mantenha o arquivo fora do Git, sincronização e logs. Não coloque a chave no prompt, em argumentos ou no `config.json`.
+O helper confere caminho final, limite de 100 MiB, origem da resposta, expiração e SHA-256 do download integral. Usa streaming no cliente e timeout total de quatro minutos. A API precisa retornar `X-FileDrop-Expires-At`. A saída é JSON; falha retorna código 1. Não há redirects nem retry automático.
 
-O arquivo evita digitar a chave a cada sessão, mas é um segredo local em disco, sem cofre embutido. A skill não cria credenciais nem altera permissões. Se `FILE_API_KEY` já estiver no ambiente herdado pelo Codex, ela tem precedência sobre o arquivo.
-
-Opções para quem precisa: `SecretFile` no JSON pode indicar outro arquivo absoluto de segredo; a variável `FILEDROP_SKILL_CONFIG` pode indicar outro `config.json` absoluto. Não é necessário usar essas opções no caso comum.
-
-## 3. Abra o Codex normalmente
-
-Selecione o plugin **FileDrop** em uma conversa e peça uma entrega. Se instalou a skill manualmente, invoque `$filedrop`. Se não aparecer, reinicie o Codex e confira a instalação. A descoberta da skill não garante que todo agente sempre siga a instrução: ela orienta o fluxo e o helper registra os resultados explicitamente.
-
-O nativo é a primeira opção. Uma falha técnica clara ativa FileDrop por 24h naquele canal/capacidade e durante a tarefa ativa. Negação, cancelamento ou confirmação pendente não autorizam trocar de método. Entrega incerta exige verificar antes de repetir. O helper não captura imagens nem envia arquivos espontaneamente.
-
-Se a política do computador bloquear scripts, pare e obtenha execução autorizada conforme as regras locais. A skill não altera política nem tenta contornar esse bloqueio.
-
-## Atualizar endereço ou chave
-
-Edite `ApiEndpoint` no JSON; a próxima chamada lê novamente. Preserve `Roots` e a pasta `state` ao lado da configuração. Esse estado guarda somente hashes, horários e estados de entrega, sem links, chaves, caminhos ou conteúdo.
-
-Para trocar a chave, altere o arquivo separado ou a variável herdada. Reinicie o Codex se mudar o ambiente de processo. Não é necessário reiniciá-lo por uma mudança no JSON ou no arquivo de chave.
-
-Alterar o endereço só afeta novos uploads. Links já entregues continuam apontando ao endereço antigo. Os arquivos da API expiram sete dias após o upload, independentemente do cooldown de 24h.
-
-## O que o helper confere
-
-Ele confere caminho final, limite de 100 MiB, endereço/origem da resposta, data de expiração e SHA-256 do download integral. Usa streaming no cliente, sem temporário de conteúdo, e timeout total de quatro minutos. A API deve retornar `X-FileDrop-Expires-At`.
-
-A saída é JSON; falha retorna código de saída 1. Não há redirects nem retry automático. Estado ocupado/corrompido ou entrega incerta bloqueia nova ação: investigue sem apagar o estado para forçar reenvio. O link é a credencial de leitura e deve ser apresentado apenas ao consumidor autorizado, sem logs.
+Estado ocupado/corrompido ou entrega incerta bloqueia nova ação; investigue sem apagar o estado para forçar reenvio. Se a política bloquear scripts, pare e obtenha execução autorizada, sem bypass automático.
 
 ## Remover
 
-Encerre as tarefas. Se instalou pelo menu de plugins, desinstale **FileDrop** nesse menu; na instalação manual, remova somente a pasta instalada da skill. Após revisar, remova também sua configuração e arquivo de segredo local se não forem mais necessários. Isso não altera a API nem apaga os arquivos do servidor.
+Encerre as tarefas e desinstale FileDrop pelo menu de plugins; na instalação manual, remova a pasta da skill. Após revisão, você pode remover sua configuração, credenciais e estado locais. Isso não altera a API nem apaga arquivos do servidor.

@@ -131,6 +131,17 @@ try{
     [IO.File]::WriteAllText((Join-Path $f.Dir 'api-key.txt'),$fakeKey)
     $fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
     try{Check ((Run $f upload -Client $client).success) 'separate user secret file supported'}finally{$client.Dispose()}
+    $f=Fixture;Activate $f
+    Add-Type -AssemblyName System.Security
+    $protected=Join-Path $f.Dir 'api-key.dpapi'
+    [IO.File]::WriteAllBytes($protected,[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($fakeKey),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
+    $f.Data.SecretFile=$protected;$f.Data.SecretProtection='CurrentUserDpapi'
+    [IO.File]::WriteAllText($f.Config,(Write-FDJson $f.Data))
+    $fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        Check ((Run $f upload -Client $client).success) 'DPAPI credential supports upload/GET roundtrip'
+        Check ($fake.Calls -eq 2 -and $fake.PostKey -and !$fake.GetKey) 'protected credential only accompanies POST'
+    }finally{$client.Dispose()}
     $f=Fixture;[void](Run $f policy)
     $stateFile=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.json)[0].FullName
     [IO.File]::WriteAllText($stateFile,'{invalid')

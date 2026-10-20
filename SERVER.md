@@ -14,7 +14,7 @@ Use duas pastas dedicadas, por exemplo:
 
 | Pasta | Conteúdo |
 | --- | --- |
-| C:\Sites\FileDropApi | Conteúdo extraído de FileDropApi-IIS-net9-skill-v1.1.zip, ou gerado conforme [BUILD.md](BUILD.md) |
+| C:\Sites\FileDropApi | Conteúdo do [pacote da API](packages/FileDropApi-IIS.zip), ou gerado conforme [BUILD.md](BUILD.md) |
 | D:\FileDropData\files | Somente envelopes criptografados desta API |
 
 A pasta de dados deve ficar fora da publicação, content root e **todos os webroots do IIS**. Não crie diretório virtual para ela. Não use symlink/junction e não misture dados preexistentes ou arquivos de outros sistemas. A limpeza exclui envelopes próprios expirados desse diretório.

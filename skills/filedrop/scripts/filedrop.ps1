@@ -59,6 +59,10 @@ function Load-FD([string]$File){
     $full=Local-FD $File
     if(!(Test-Path -LiteralPath $full -PathType Leaf) -or ([IO.FileInfo]$full).Length -gt 65536){Fail-FD 'configuration_invalid'}
     $o=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($full))
+    return Options-FD $o $full
+}
+function Options-FD($o,[string]$full){
+    if($o -isnot [Collections.IDictionary]){Fail-FD 'configuration_invalid'}
     $uri=$null
     if(![uri]::TryCreate([string]$o.ApiEndpoint,[UriKind]::Absolute,[ref]$uri) -or
        ($uri.Scheme -ne 'https' -and !($uri.Scheme -eq 'http' -and $o.AllowInsecureHttp -is [bool] -and $o.AllowInsecureHttp)) -or
@@ -67,7 +71,25 @@ function Load-FD([string]$File){
     $roots=@(foreach($r in $o.Roots){$p=Local-FD ([string]$r);if(![IO.Directory]::Exists($p)){Fail-FD 'configuration_invalid'};$p})
     $secret=Local-FD (Join-Path ([IO.Path]::GetDirectoryName($full)) 'api-key.txt')
     if($o.SecretFile){$secret=Local-FD ([string]$o.SecretFile)}
-    return @{Endpoint=$uri;Roots=$roots;SecretFile=$secret;State=(Join-Path ([IO.Path]::GetDirectoryName($full)) 'state')}
+    $protection=if($o.SecretProtection){[string]$o.SecretProtection}else{'None'}
+    if($protection -notin @('None','CurrentUserDpapi')){Fail-FD 'configuration_invalid'}
+    return @{Endpoint=$uri;Roots=$roots;SecretFile=$secret;SecretProtection=$protection;State=(Join-Path ([IO.Path]::GetDirectoryName($full)) 'state')}
+}
+function Read-FDKey($Options){
+    $key=$env:FILE_API_KEY;$clear=$null
+    try{
+        if(!$key -and $Options.SecretFile){
+            $max=if($Options.SecretProtection -eq 'CurrentUserDpapi'){4096}else{258}
+            if(![IO.File]::Exists($Options.SecretFile) -or ([IO.FileInfo]$Options.SecretFile).Length -gt $max){Fail-FD 'credentials_unavailable'}
+            if($Options.SecretProtection -eq 'CurrentUserDpapi'){
+                Add-Type -AssemblyName System.Security
+                try{$clear=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($Options.SecretFile),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)}catch{Fail-FD 'credentials_unavailable'}
+                $key=[Text.Encoding]::UTF8.GetString($clear)
+            }else{$key=[IO.File]::ReadAllText($Options.SecretFile).TrimEnd([char[]]@(13,10))}
+        }
+        if(!$key -or $key.Length -lt 32 -or $key.Length -gt 256 -or $key -cmatch '[^!-~]'){Fail-FD 'credentials_unavailable'}
+        return $key
+    }finally{if($clear){[Array]::Clear($clear,0,$clear.Length)}}
 }
 function Hash-FD([string]$Value){
     $sha=[Security.Cryptography.SHA256]::Create()
@@ -112,12 +134,7 @@ function Send-FD($Options,[string]$File,$Client){
     $stream=$null;$post=$null;$response=$null;$get=$null;$verified=$null;$timer=$null;$own=$false
     $sent=$false;$known=$null;$phase='ready'
     try{
-        $key=$env:FILE_API_KEY
-        if(!$key -and $Options.SecretFile){
-            if(![IO.File]::Exists($Options.SecretFile) -or ([IO.FileInfo]$Options.SecretFile).Length -gt 258){Fail-FD 'credentials_unavailable'}
-            $key=[IO.File]::ReadAllText($Options.SecretFile).TrimEnd([char[]]@(13,10))
-        }
-        if(!$key -or $key.Length -lt 32 -or $key.Length -gt 256 -or $key -cmatch '[^!-~]'){Fail-FD 'credentials_unavailable'}
+        $key=Read-FDKey $Options
         $full=Local-FD $File
         if(!@($Options.Roots|Where-Object{Inside-FD $full $_}).Count){Fail-FD 'path_not_allowed'}
         $stream=[IO.FileStream]::new($full,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)

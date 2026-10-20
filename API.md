@@ -59,6 +59,6 @@ A limpeza depende da aplicação IIS ativa e retoma na inicialização. Não gar
 
 ## Cliente da skill
 
-Use a skill e o helper Windows PowerShell5.1 conforme [README.md](README.md) e [setup.md](skills/filedrop/setup.md). Endpoint/roots ficam em arquivo local fora de Git; a chave vem de FILE_API_KEY ou arquivo separado fornecido pelo usuário. O helper coordena a política de fallback, envia uma vez, bloqueia redirects e verifica bytes/hash do GET sem a chave de POST.
+Use o plugin com onboarding e o helper Windows PowerShell 5.1 conforme [README.md](README.md) e [setup.md](skills/filedrop/setup.md). Endereço e pastas ficam em configuração local fora do Git; o onboarding protege a chave com DPAPI para o usuário do Windows. FILE_API_KEY e arquivos de texto de instalações anteriores continuam compatíveis. O helper coordena a política de fallback, envia uma vez, bloqueia redirects e verifica bytes/hash do GET sem a chave de POST.
 
 A saída JSON contém o link deliberadamente para o consumidor. Não faça transcrição nem persista essa saída. Resultado incerto exige verificar antes de qualquer novo POST.

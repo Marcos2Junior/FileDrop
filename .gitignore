@@ -20,6 +20,7 @@ coverage/
 .env.*
 **/secrets.json
 **/api-key*.txt
+**/api-key*.dpapi
 **/FileDropSkill/
 **/*secrets*.json
 **/appsettings.*.json
@@ -53,6 +54,10 @@ coverage/
 *.bin
 *.enc
 *.dat
+
+# Explicit distributable packages; never add other generated files implicitly
+!/packages/FileDrop-plugin.zip
+!/packages/FileDropApi-IIS.zip
 
 # Local delivery history, not repository documentation
 /VALIDATION.md
