@@ -14,6 +14,7 @@ Projeto independente: API/testes net9.0. Não misture com Hefyt/outros projetos.
 - Cada POST cria novo ID/chave; retry pode duplicar. Após 201 com GET falho, investigue sem reupload automático.
 - 400/401/413/415 exigem correção; 404 pode ser segredo errado, ausência, adulteração ou expiração; 429 respeita Retry-After com tentativas limitadas; rede/500 pode ocorrer após gravar.
 - GET integral, sem Range/busca temporal garantida. Envie somente conteúdo/destino autorizados; pode haver dados sensíveis.
+- HTTPS continua padrão. HTTP externo exige opt-in explícito Files:AllowInsecureHttp na API, AllowInsecureHttp no MCP e -AllowInsecureHttp nos scripts. Leia HTTP.md. Não habilite espontaneamente nem relaxe redirects/origem/validação TLS.
 
 ## Desenvolver/publicar
 

@@ -12,7 +12,7 @@ O ID é aleatório, 64 caracteres hexadecimais. O link segue o formato:
 
     https://files.example.invalid/files/{id}?key={segredo-base64url-de-43-caracteres}
 
-Esse formato usa placeholders, não um link válido. A base vem exclusivamente de Files:PublicBaseUrl; Host e X-Forwarded-Host não são usados.
+Esse formato usa placeholders, não um link válido. A base vem exclusivamente de Files:PublicBaseUrl; Host e X-Forwarded-Host não são usados. HTTPS é o padrão; HTTP externo exige Files:AllowInsecureHttp=true. A exceção loopback preexistente permanece. Veja [HTTP.md](HTTP.md).
 
 **GET /files/{id}?key={segredo}**, sem X-Api-Key, devolve bytes originais após autenticar a criptografia inteira. Ausente/errado/adulterado/expirado retorna **404 JSON genérico** sem conteúdo em claro. Não há listagem nem recuperação de links.
 

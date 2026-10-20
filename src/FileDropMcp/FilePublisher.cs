@@ -152,7 +152,8 @@ public sealed class FilePublisher
     {
         if (!Regex.IsMatch(result.Id ?? "", "^[a-f0-9]{64}$") || !Types.Contains(result.ContentType ?? "") ||
             !Uri.TryCreate(result.Url, UriKind.Absolute, out var uri)) return false;
-        return uri.Scheme == "https" && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Fragment) &&
+        return uri.Scheme == options.Endpoint.Scheme && (uri.Scheme == "https" || (uri.Scheme == "http" && options.AllowInsecureHttp)) &&
+            string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Fragment) &&
             uri.Authority.Equals(options.Endpoint.Authority, StringComparison.OrdinalIgnoreCase) &&
             uri.AbsolutePath == options.Endpoint.AbsolutePath + "/" + result.Id &&
             Regex.IsMatch(uri.Query, "^\\?key=[a-zA-Z0-9_-]{43}$", RegexOptions.CultureInvariant);

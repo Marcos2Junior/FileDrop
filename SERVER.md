@@ -23,7 +23,7 @@ A pasta de dados deve ficar fora da publicação, content root e **todos os webr
 
 No IIS Manager, crie um pool dedicado, por exemplo **FileDrop**, com **No Managed Code**, **Enable 32-bit Applications = False** e identidade **ApplicationPoolIdentity**. Crie o site/aplicação apontando para a pasta publicada. Preserve o web.config gerado pelo SDK.
 
-Configure DNS e binding HTTPS para seu domínio com certificado válido e confiável. O cliente deve alcançar diretamente o endereço final, sem redirects. O MCP só aceita HTTPS.
+Configure DNS e binding HTTPS para seu domínio com certificado válido e confiável. O cliente deve alcançar diretamente o endereço final, sem redirects. O MCP exige HTTPS por padrão; HTTP externo requer opt-in nos dois lados, conforme [HTTP.md](HTTP.md).
 
 No Explorador/segurança da pasta, conceda manualmente à identidade **IIS AppPool\FileDrop** apenas o necessário: leitura/execução na publicação; leitura, criação, gravação e exclusão na pasta de dados (Modify nessa pasta dedicada atende). Não conceda Full Control nem troque o pool para administrador. A pasta de configuração/credencial também deve ter acesso restrito. [Identidades de pool](https://learn.microsoft.com/en-us/iis/manage/configuring-security/application-pool-identities).
 
@@ -35,6 +35,7 @@ Configure o ambiente **do pool/aplicação**, por mecanismo administrativo segur
 | --- | --- |
 | Files__ApiKey | Segredo imprevisível de 32 a 256 caracteres ASCII sem espaços, fornecido por você |
 | Files__PublicBaseUrl | Base pública canônica, como https://files.example.invalid, **sem /files** |
+| Files__AllowInsecureHttp | Opcional; false por padrão. true permite base HTTP externa, com exposição do tráfego |
 | Files__StorageDirectory | Caminho absoluto dedicado, como D:\FileDropData\files |
 | Files__MaxUploadBytes | Opcional; padrão e máximo 104857600; pode reduzir |
 

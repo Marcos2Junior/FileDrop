@@ -27,7 +27,7 @@ O padrão é **preview sem gravação**. Revise os caminhos/bloco TOML; repita c
 
 O script copia servidor/dependências para LocalAppData\FileDropMcp, configura dados não secretos, faz backup de config.toml e AGENTS.md antes de acrescentar servidor/instrução, e instala a skill filedrop-delivery. Preserva conteúdo existente e recusa entrada/skill/instalação já existente ou TOML inline ambíguo. Não faz atualização/desinstalação automática.
 
-Opções: -InstallDirectory, -CodexHomePath, -PackageRoot; -SkipGlobalInstruction deixa de acrescentar AGENTS.md, mantendo skill e server instructions. Sem instrução global, a escolha automática da skill depende mais do cliente. Só instalar MCP não garante que o agente sempre o consulte.
+Opções: -InstallDirectory, -CodexHomePath, -PackageRoot e -AllowInsecureHttp; -SkipGlobalInstruction deixa de acrescentar AGENTS.md, mantendo skill e server instructions. Sem instrução global, a escolha automática da skill depende mais do cliente. Só instalar MCP não garante que o agente sempre o consulte.
 
 **Nada foi instalado no perfil real nesta entrega.** O teste de -Apply usa perfil/payload inertes próprios em Temp, sem executar cliente/servidor instalado.
 
@@ -41,7 +41,7 @@ O launcher pede chave com entrada mascarada e inicia o Codex CLI com chave só n
 
 Também pode fornecer a variável por gerenciador de segredos/processo autorizado. Não há cofre, credencial persistente configurada nem proteção contra administrador/processos capazes de ler memória/ambiente. Chave não vai em argumento, histórico, arquivo ou config Git.
 
-mcp-config.json só contém ApiEndpoint, Roots e StateDirectory. Endpoint fixo HTTPS /files, sem credenciais/query/fragmento. Roots locais, absolutos e existentes. Não há ferramenta para alterar esses parâmetros.
+mcp-config.json só contém ApiEndpoint, AllowInsecureHttp, Roots e StateDirectory. Endpoint fixo HTTPS /files por padrão, sem credenciais/query/fragmento. AllowInsecureHttp=true permite HTTP explícito; o instalador recebe -AllowInsecureHttp. Veja [HTTP.md](HTTP.md) para atualizar instalações existentes e entender o tráfego sem proteção. Roots locais, absolutos e existentes. Não há ferramenta para alterar esses parâmetros.
 
 ## Upload e resultado
 

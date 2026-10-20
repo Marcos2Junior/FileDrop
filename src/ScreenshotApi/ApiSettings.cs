@@ -4,6 +4,7 @@ public sealed class ApiSettings
 {
     public string ApiKey { get; set; } = "";
     public string PublicBaseUrl { get; set; } = "";
+    public bool AllowInsecureHttp { get; set; }
     public string StorageDirectory { get; set; } = "";
     public long MaxUploadBytes { get; set; } = 100 * 1024 * 1024;
     public long MaxRequestBytes => MaxUploadBytes + 64 * 1024;
@@ -17,10 +18,10 @@ public sealed class ApiSettings
             throw new InvalidOperationException("Configure Files:ApiKey externamente: 32 a 256 caracteres ASCII sem espacos; nao use um placeholder.");
 
         if (!Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != "https" && !(uri.Scheme == "http" && uri.IsLoopback)) ||
+            (uri.Scheme != "https" && !(uri.Scheme == "http" && (uri.IsLoopback || AllowInsecureHttp))) ||
             !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) ||
             !string.IsNullOrEmpty(uri.Fragment))
-            throw new InvalidOperationException("Files:PublicBaseUrl deve ser uma URL HTTPS absoluta sem credenciais, query ou fragmento (HTTP somente loopback).");
+            throw new InvalidOperationException("Files:PublicBaseUrl deve ser uma URL HTTPS absoluta sem credenciais, query ou fragmento. HTTP externo exige Files:AllowInsecureHttp=true.");
         PublicBaseUrl = uri.AbsoluteUri.TrimEnd('/');
 
         if (MaxUploadBytes is < 1 or > 104857600)

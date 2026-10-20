@@ -3,6 +3,7 @@
 param(
     [Parameter(Mandatory)][uri] $ApiEndpoint,
     [Parameter(Mandatory)][string[]] $Roots,
+    [switch] $AllowInsecureHttp,
     [string] $InstallDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'FileDropMcp'),
     [string] $CodexHomePath = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' }),
     [string] $PackageRoot = $PSScriptRoot,
@@ -22,7 +23,7 @@ function Get-SafeFullPath([string] $Value) {
 }
 function Quote-Toml([string] $Value) { return ConvertTo-Json -InputObject $Value -Compress }
 if (-not $IsWindows -or -not [Environment]::Is64BitProcess) { throw 'This package requires Windows x64 and PowerShell 7.3+.' }
-if (-not $ApiEndpoint.IsAbsoluteUri -or $ApiEndpoint.Scheme -ne 'https' -or $ApiEndpoint.UserInfo -or $ApiEndpoint.Query -or $ApiEndpoint.Fragment -or -not $ApiEndpoint.AbsolutePath.EndsWith('/files') -or $ApiEndpoint.AbsolutePath.Contains('%')) { throw 'Use a fixed canonical HTTPS /files endpoint without credentials/query/fragment.' }
+if (-not $ApiEndpoint.IsAbsoluteUri -or ($ApiEndpoint.Scheme -ne 'https' -and -not ($ApiEndpoint.Scheme -eq 'http' -and $AllowInsecureHttp)) -or $ApiEndpoint.UserInfo -or $ApiEndpoint.Query -or $ApiEndpoint.Fragment -or -not $ApiEndpoint.AbsolutePath.EndsWith('/files') -or $ApiEndpoint.OriginalString.Contains('%')) { throw 'Use a fixed canonical HTTPS /files endpoint without credentials/query/fragment. HTTP requires -AllowInsecureHttp.' }
 if ($Roots.Count -eq 0 -or $Roots.Count -gt 32) { throw 'Configure between 1 and 32 authorized roots.' }
 $checkedRoots = @($Roots | ForEach-Object { $root = Get-SafeFullPath $_; if (-not [IO.Directory]::Exists($root)) { throw 'An authorized root does not exist.' }; $root })
 $install = Get-SafeFullPath $InstallDirectory
@@ -65,6 +66,7 @@ For explicitly requested file/image/document delivery only, follow the filedrop-
 Write-Output ('Preview installation directory: ' + $install)
 Write-Output ('Preview Codex config: ' + $configPath)
 Write-Output ('Authorized roots: ' + ($checkedRoots -join ', '))
+Write-Output ('AllowInsecureHttp: ' + [bool]$AllowInsecureHttp)
 Write-Output 'Credential: inherited FILE_API_KEY only; the installer never reads/saves its value.'
 Write-Output 'Existing config/AGENTS files are backed up before append; existing content is preserved.'
 Write-Output $block
@@ -76,7 +78,7 @@ New-Item -ItemType Directory -Path $install,$codexHome,$skillTarget -Force | Out
 Copy-Item -LiteralPath $payload -Destination (Join-Path $install 'server') -Recurse
 Copy-Item -LiteralPath $launcher -Destination (Join-Path $install 'Launch-CodexWithFileDrop.ps1')
 Copy-Item -LiteralPath $skillSource -Destination (Join-Path $skillTarget 'SKILL.md')
-[ordered]@{ ApiEndpoint=$ApiEndpoint.AbsoluteUri; Roots=$checkedRoots; StateDirectory=(Join-Path $install 'state') } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $settingsPath -Encoding utf8
+[ordered]@{ ApiEndpoint=$ApiEndpoint.AbsoluteUri; AllowInsecureHttp=[bool]$AllowInsecureHttp; Roots=$checkedRoots; StateDirectory=(Join-Path $install 'state') } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $settingsPath -Encoding utf8
 $backupSuffix = '.bak-' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss') + '-' + [guid]::NewGuid().ToString('N')
 if (Test-Path -LiteralPath $configPath) { [IO.File]::Copy($configPath,$configPath + $backupSuffix,$false) }
 [IO.File]::WriteAllText($configPath,$existingConfig + [Environment]::NewLine + $block,[Text.UTF8Encoding]::new($false))

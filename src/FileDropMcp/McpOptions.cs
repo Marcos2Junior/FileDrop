@@ -6,6 +6,7 @@ namespace FileDropMcp;
 public sealed class McpOptions
 {
     public string ApiEndpoint { get; set; } = "";
+    public bool AllowInsecureHttp { get; set; }
     public string[] Roots { get; set; } = [];
     public string StateDirectory { get; set; } = "";
     public const long MaxFileBytes = 100 * 1024 * 1024;
@@ -27,9 +28,10 @@ public sealed class McpOptions
 
     public void Validate()
     {
-        if (!Uri.TryCreate(ApiEndpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "https" ||
+        if (!Uri.TryCreate(ApiEndpoint, UriKind.Absolute, out var endpoint) ||
+            (endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && AllowInsecureHttp)) ||
             !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) || !string.IsNullOrEmpty(endpoint.Fragment) ||
-            !endpoint.AbsolutePath.EndsWith("/files", StringComparison.Ordinal) || endpoint.AbsolutePath.Contains('%'))
+            !endpoint.AbsolutePath.EndsWith("/files", StringComparison.Ordinal) || endpoint.OriginalString.Contains('%'))
             throw new DeliveryException("configuration_invalid");
         ApiEndpoint = endpoint.AbsoluteUri;
         if (Roots is not { Length: > 0 and <= 32 }) throw new DeliveryException("configuration_invalid");

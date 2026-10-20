@@ -24,7 +24,7 @@ Se o ambiente não permitir o IPC/named pipe do runner integrado, as mesmas suí
 
 Esse runner direto é o executável de testes xUnit v3 compilado, não uma reimplementação dos testes. Ele dispensa a comunicação do comando dotnet test. Use pasta temporária gravável autorizada se o ambiente restringir o TEMP/TMP.
 
-Validação local anterior à documentação: **60 testes API passaram; MCP 48 passaram e 1 foi ignorado**, sem falhas. O teste ignorado cria uma junction real e é opt-in via FILEDROP_TEST_JUNCTION=1 somente em ambiente já autorizado. A criação foi negada neste ambiente e não foi repetida. Os demais testes de caminhos passaram.
+Validação local do opt-in HTTP: **70 testes API passaram; MCP 74 passaram e 1 foi ignorado**, sem falhas. O teste ignorado cria uma junction real e é opt-in via FILEDROP_TEST_JUNCTION=1 somente em ambiente já autorizado. A criação foi negada neste ambiente e não foi repetida. Os demais testes de caminhos passaram.
 
 Cobertura: roundtrip binário, tipos/limites, ciphertext e AES-GCM, adulteração/truncamento, expiração/limpeza com relógio controlado; política de 24h/concorrência/negação/incerteza, HTTP mock, paths, stdio real e instalação em perfil fictício. O teste stdio inicia o processo por stdin/stdout, descobre e chama ferramentas. HTTP usa mocks/TestServer, sem depender de porta local.
 
@@ -44,7 +44,7 @@ Em Windows x64, o apphost do MCP gerado é FileDropMcp.exe. É **framework-depen
     Copy-Item -LiteralPath .\integration\Install-FileDropMcp.ps1 -Destination .\artifacts\mcp-package\
     Copy-Item -LiteralPath .\integration\Launch-CodexWithFileDrop.ps1 -Destination .\artifacts\mcp-package\
     Copy-Item -LiteralPath .\integration\skill -Destination .\artifacts\mcp-package\skill -Recurse
-    Copy-Item -LiteralPath .\README.md,.\MCP.md,.\API.md,.\SERVER.md,.\BUILD.md -Destination .\artifacts\mcp-package\
+    Copy-Item -LiteralPath .\README.md,.\MCP.md,.\API.md,.\SERVER.md,.\BUILD.md,.\HTTP.md -Destination .\artifacts\mcp-package\
     Compress-Archive -Path .\artifacts\api-package\* -DestinationPath .\artifacts\FileDropApi-IIS-net9.zip
     Compress-Archive -Path .\artifacts\mcp-package\* -DestinationPath .\artifacts\FileDropMcp-win-x64-net9.zip
 

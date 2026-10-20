@@ -57,4 +57,33 @@ public sealed class PathTests
         fixture.Options.ApiEndpoint = endpoint;
         Assert.Throws<DeliveryException>(() => fixture.Options.Validate());
     }
+
+    [Theory]
+    [InlineData("https://files.example.invalid:4958/files", false)]
+    [InlineData("https://files.example.invalid:4958/files", true)]
+    [InlineData("http://files.example.invalid:4958/files", true)]
+    public void Endpoint_allows_external_HTTP_only_with_explicit_optin(string endpoint, bool allowHttp)
+    {
+        using var fixture = new Fixture();
+        fixture.Options.ApiEndpoint = endpoint;
+        fixture.Options.AllowInsecureHttp = allowHttp;
+        fixture.Options.Validate();
+        Assert.Equal(endpoint, fixture.Options.Endpoint.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://files.example.invalid:4958/files", false)]
+    [InlineData("ftp://files.example.invalid/files", true)]
+    [InlineData("relative", true)]
+    [InlineData("http://user:secret@files.example.invalid/files", true)]
+    [InlineData("http://files.example.invalid/files?query=bad", true)]
+    [InlineData("http://files.example.invalid/files#fragment", true)]
+    [InlineData("http://files.example.invalid/%66iles", true)]
+    public void HTTP_optin_preserves_endpoint_restrictions(string endpoint, bool allowHttp)
+    {
+        using var fixture = new Fixture();
+        fixture.Options.ApiEndpoint = endpoint;
+        fixture.Options.AllowInsecureHttp = allowHttp;
+        Assert.Throws<DeliveryException>(() => fixture.Options.Validate());
+    }
 }

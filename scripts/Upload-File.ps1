@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $FilePath,
-    [Parameter(Mandatory)][uri] $Endpoint
+    [Parameter(Mandatory)][uri] $Endpoint,
+    [switch] $AllowInsecureHttp
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +19,7 @@ $get = $null
 try {
     $key = $env:FILE_API_KEY
     if ([string]::IsNullOrWhiteSpace($key) -or $key.Length -lt 32 -or $key.Length -gt 256 -or $key -cmatch '[^!-~]') { throw 'Invalid key configuration.' }
-    if (-not $Endpoint.IsAbsoluteUri -or ($Endpoint.Scheme -ne 'https' -and -not ($Endpoint.Scheme -eq 'http' -and $Endpoint.IsLoopback)) -or $Endpoint.UserInfo -or $Endpoint.Query -or $Endpoint.Fragment -or -not $Endpoint.AbsolutePath.EndsWith('/files')) { throw 'Invalid endpoint.' }
+    if (-not $Endpoint.IsAbsoluteUri -or ($Endpoint.Scheme -ne 'https' -and -not ($Endpoint.Scheme -eq 'http' -and ($Endpoint.IsLoopback -or $AllowInsecureHttp))) -or $Endpoint.UserInfo -or $Endpoint.Query -or $Endpoint.Fragment -or -not $Endpoint.AbsolutePath.EndsWith('/files')) { throw 'Invalid endpoint; external HTTP requires -AllowInsecureHttp.' }
     $file = Get-Item -LiteralPath $FilePath
     if ($file.PSIsContainer -or $file.Length -eq 0) { throw 'Invalid file.' }
 

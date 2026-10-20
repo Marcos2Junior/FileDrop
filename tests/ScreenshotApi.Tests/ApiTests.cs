@@ -488,6 +488,44 @@ public sealed class ApiTests
         factory.Overrides[setting] = value;
         Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
     }
+    [Theory]
+    [InlineData("https://files.example.invalid:4958/agents", false)]
+    [InlineData("https://files.example.invalid:4958/agents", true)]
+    [InlineData("http://files.example.invalid:4958/agents", true)]
+    [InlineData("http://127.0.0.1:4958/agents", false)]
+    public async Task Configured_transport_is_preserved_in_returned_URL_and_roundtrip(string baseUrl, bool allowHttp)
+    {
+        using var factory = new ApiFactory();
+        factory.Overrides["Files:PublicBaseUrl"] = baseUrl;
+        factory.Overrides["Files:AllowInsecureHttp"] = allowHttp.ToString();
+        using var client = factory.CreateClient();
+        using var request = Upload();
+        request.Headers.Host = "attacker.invalid";
+        using var created = await client.SendAsync(request, CT);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var result = (await created.Content.ReadFromJsonAsync<FileResponse>(CT))!;
+        var uri = new Uri(result.Url);
+        Assert.Equal(baseUrl + "/files/" + result.Id, uri.GetLeftPart(UriPartial.Path));
+        Assert.True(created.Headers.Location?.AbsoluteUri == result.Url);
+        using var fetched = await client.GetAsync(GetPath(result), CT);
+        Assert.Equal(new byte[] { 1,2,3,4 }, await fetched.Content.ReadAsByteArrayAsync(CT));
+    }
+
+    [Theory]
+    [InlineData("http://files.example.invalid:4958/agents", false)]
+    [InlineData("ftp://files.example.invalid/agents", true)]
+    [InlineData("relative", true)]
+    [InlineData("http://user:secret@files.example.invalid:4958", true)]
+    [InlineData("http://files.example.invalid:4958/?bad=true", true)]
+    [InlineData("http://files.example.invalid:4958/#fragment", true)]
+    public void HTTP_optin_does_not_relax_other_URL_restrictions(string baseUrl, bool allowHttp)
+    {
+        using var factory = new ApiFactory();
+        factory.Overrides["Files:PublicBaseUrl"] = baseUrl;
+        factory.Overrides["Files:AllowInsecureHttp"] = allowHttp.ToString();
+        Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+    }
+
     [Fact]
     public void Storage_inside_app_is_rejected()
     {

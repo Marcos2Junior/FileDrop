@@ -28,10 +28,17 @@ public sealed class PublisherTests
         await File.WriteAllBytesAsync(path, [0,1,2,3,255], CT);
         return path;
     }
-    [Fact]
-    public async Task Upload_and_full_GET_verification_use_key_only_on_POST_and_do_not_persist_url()
+    [Theory]
+    [InlineData("https", false)]
+    [InlineData("https", true)]
+    [InlineData("http", true)]
+    public async Task Upload_and_full_GET_verification_use_key_only_on_POST_and_do_not_persist_url(string scheme, bool allowHttp)
     {
         using var fixture = new Fixture();
+        fixture.Options.ApiEndpoint = scheme + "://files.example.invalid/files";
+        fixture.Options.AllowInsecureHttp = allowHttp;
+        fixture.Options.Validate();
+        var expectedUrl = FakeUrl.Replace("https:", scheme + ":");
         await fixture.Activate();
         var input = await Input(fixture);
         var handler = new Handler(async request =>
@@ -42,8 +49,9 @@ public sealed class PublisherTests
                 Assert.True(request.Headers.GetValues("X-Api-Key").Single() == Fixture.FakeKey);
                 var body = await request.Content!.ReadAsByteArrayAsync(CT);
                 Assert.True(body.AsSpan().IndexOf(new byte[] {0,1,2,3,255}) >= 0);
-                return Created();
+                return Created(url: expectedUrl);
             }
+            Assert.True(request.RequestUri?.AbsoluteUri == expectedUrl);
             Assert.False(request.Headers.Contains("X-Api-Key"));
             var result = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([0,1,2,3,255]) };
             result.Content.Headers.ContentType = new("application/octet-stream");
@@ -53,12 +61,12 @@ public sealed class PublisherTests
         var published = await Publisher(fixture, handler).Publish(input, "chat", "image-delivery", "task", CT);
         Assert.True(published.Success);
         Assert.False(published.RequiresVerification);
-        Assert.True(published.Url == FakeUrl);
+        Assert.True(published.Url == expectedUrl);
         Assert.Equal("document.bin", published.Name);
         Assert.Equal(new DateTimeOffset(2026,10,27,12,0,0,TimeSpan.Zero), published.ExpiresAt);
         Assert.Equal(2, handler.Calls);
         var disk = await File.ReadAllTextAsync(Path.Combine(fixture.Options.StateDirectory, "policy.json"), CT);
-        Assert.DoesNotContain("https", disk);
+        Assert.DoesNotContain("http", disk);
         Assert.DoesNotContain("?key", disk);
         Assert.DoesNotContain(Fixture.FakeKey, disk);
         Assert.DoesNotContain("document.bin", disk);
@@ -116,12 +124,21 @@ public sealed class PublisherTests
             Assert.Equal(1, handler.Calls);
         }
     }
-    [Fact]
-    public async Task Response_URL_cannot_change_host_or_forward_key_to_another_origin()
+    [Theory]
+    [InlineData("https", "https", "other.example.invalid")]
+    [InlineData("https", "http", "files.example.invalid")]
+    [InlineData("http", "https", "files.example.invalid")]
+    [InlineData("http", "http", "other.example.invalid")]
+    [InlineData("http", "http", "files.example.invalid:4959")]
+    public async Task Response_URL_cannot_change_origin_even_with_HTTP_optin(string endpointScheme, string responseScheme, string responseHost)
     {
         using var fixture = new Fixture();
+        fixture.Options.ApiEndpoint = endpointScheme + "://files.example.invalid/files";
+        fixture.Options.AllowInsecureHttp = true;
+        fixture.Options.Validate();
         await fixture.Activate();
-        var handler = new Handler(_ => Task.FromResult(Created(url: FakeUrl.Replace("files.example.invalid", "other.example.invalid"))));
+        var changedUrl = FakeUrl.Replace("https:", responseScheme + ":").Replace("files.example.invalid", responseHost);
+        var handler = new Handler(_ => Task.FromResult(Created(url: changedUrl)));
         var result = await Publisher(fixture, handler).Publish(await Input(fixture), "chat", "image-delivery", "task", CT);
         Assert.False(result.Success);
         Assert.True(result.RequiresVerification);

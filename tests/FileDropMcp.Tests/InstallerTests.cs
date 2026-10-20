@@ -6,10 +6,14 @@ namespace FileDropMcp.Tests;
 
 public sealed class InstallerTests
 {
-    [Fact]
-    public async Task Installer_preview_is_read_only_apply_preserves_config_and_backups_and_repeat_refuses()
+    [Theory]
+    [InlineData("https", false)]
+    [InlineData("http", true)]
+    public async Task Installer_preview_is_read_only_apply_preserves_config_and_backups_and_repeat_refuses(string scheme, bool allowHttp)
     {
         using var fixture = new Fixture();
+        fixture.Options.ApiEndpoint = scheme + "://files.example.invalid/files";
+        fixture.Options.AllowInsecureHttp = allowHttp;
         var ct = TestContext.Current.CancellationToken;
         var project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));
         var installer = Path.Combine(project, "integration", "Install-FileDropMcp.ps1");
@@ -36,6 +40,7 @@ public sealed class InstallerTests
             foreach (var arg in new[] { "-NoProfile", "-File", installer, "-ApiEndpoint", fixture.Options.ApiEndpoint, "-Roots", fixture.Files,
                          "-InstallDirectory", target, "-CodexHomePath", codeHome, "-PackageRoot", package }) info.ArgumentList.Add(arg);
             if (apply) info.ArgumentList.Add("-Apply");
+            if (allowHttp) info.ArgumentList.Add("-AllowInsecureHttp");
             using var child = Process.Start(info)!;
             var stdout = child.StandardOutput.ReadToEndAsync(timeout.Token);
             var stderr = child.StandardError.ReadToEndAsync(timeout.Token);
@@ -59,6 +64,7 @@ public sealed class InstallerTests
         Assert.True(File.Exists(Path.Combine(home, "skills", "filedrop-delivery", "SKILL.md")));
         var options = McpOptions.Load(Path.Combine(install, "mcp-config.json"));
         Assert.Equal(fixture.Options.ApiEndpoint, options.ApiEndpoint);
+        Assert.Equal(allowHttp, options.AllowInsecureHttp);
         Assert.Single(options.Roots);
         Assert.False(Directory.Exists(options.StateDirectory)); // installer does not start MCP or upload
         var previous = configured;

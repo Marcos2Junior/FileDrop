@@ -44,7 +44,7 @@ Antes de instalar o MCP, a API precisa estar acessível pelo cliente em um ender
 
     https://files.example.invalid/files
 
-Substitua o domínio de exemplo pelo seu. O certificado deve ser válido e confiável. Use o destino HTTPS definitivo: o MCP não segue redirects.
+Substitua o domínio de exemplo pelo seu. O certificado deve ser válido e confiável. Use o destino HTTPS definitivo: o MCP não segue redirects. Para a exceção explícita de HTTP externo, consulte [HTTP.md](HTTP.md); habilite a opção tanto no servidor quanto no cliente.
 
 ## 4. Instale o MCP no computador do agente
 
@@ -109,6 +109,8 @@ ApiEndpoint inclui /files. Preserve Roots e StateDirectory ao trocar só o servi
 No servidor, atualize **Files__PublicBaseUrl**; no cliente, **ApiEndpoint**. A base do servidor não inclui /files. Para trocar a chave de POST, altere **Files__ApiKey** no servidor, recicle o pool e informe a nova chave no launcher. Não salve a chave em mcp-config.json.
 
 Mantendo **domínio/caminho público e os arquivos cifrados**, uma mudança de máquina pode preservar os links pelo restante dos sete dias. Não exponha a pasta de dados como conteúdo estático. Se mudar domínio/caminho, os links já entregues continuam apontando ao endereço antigo: mantenha esse endereço atendendo enquanto necessário. O MCP não segue redirects. Trocar só a chave de POST não invalida links existentes, pois usam chaves individuais.
+
+Para habilitar HTTP externo ou atualizar um MCP já instalado para esse modo, siga [HTTP.md](HTTP.md). Os binários novos também são necessários; o instalador não sobrescreve uma instalação existente.
 
 ## 6. Remova a instalação, se necessário
 
