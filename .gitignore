@@ -1,0 +1,56 @@
+# Build, package cache and editor outputs
+**/bin/
+**/obj/
+.dotnet/
+.nuget/
+.vs/
+.idea/
+.vscode/
+TestResults/
+artifacts/
+coverage/
+*.trx
+*.coverage
+*.user
+*.suo
+
+# Local credentials, configuration, backups and runtime state
+.env
+.env.*
+**/secrets.json
+**/*secrets*.json
+**/appsettings.*.json
+**/mcp-config*.json
+**/policy.json
+**/policy.lock
+**/state/
+**/logs/
+**/data/
+**/uploads/
+*.log
+*.tmp
+*.temp
+*.bak
+*.bak-*
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# Generated packages, binaries and received content
+*.zip
+*.7z
+*.tar
+*.gz
+*.dll
+*.exe
+*.pdb
+*.bin
+*.enc
+*.dat
+
+# Local delivery history, not repository documentation
+/VALIDATION.md
+/MCP_VALIDATION.md
