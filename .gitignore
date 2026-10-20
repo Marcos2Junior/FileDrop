@@ -13,14 +13,17 @@ coverage/
 *.coverage
 *.user
 *.suo
+**/Properties/PublishProfiles/
 
 # Local credentials, configuration, backups and runtime state
 .env
 .env.*
 **/secrets.json
+**/api-key*.txt
+**/FileDropSkill/
 **/*secrets*.json
 **/appsettings.*.json
-**/mcp-config*.json
+**/*config*.json
 **/policy.json
 **/policy.lock
 **/state/
@@ -53,4 +56,4 @@ coverage/
 
 # Local delivery history, not repository documentation
 /VALIDATION.md
-/MCP_VALIDATION.md
+/*_VALIDATION.md

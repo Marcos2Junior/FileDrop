@@ -1,55 +1,62 @@
-# Gerar pacotes e executar testes
+# Desenvolvimento e pacotes
 
-Use Windows x64 e PowerShell 7.3+. Instale manualmente o SDK **10.0.401** ou patch 10.0.4xx posterior, respeitando global.json. Os projetos são net9.0. Para testes, instale também .NET Runtime 9 e ASP.NET Core Runtime 9 x64; para executar os pacotes, veja README.md.
+Este guia é para quem vai compilar ou modificar o projeto. Para usar a skill pronta, siga o [README](README.md).
 
-Os comandos abaixo partem da raiz dos fontes. A restauração usa somente nuget.org e os lockfiles versionados. Não precisa de ferramenta dotnet global. A pasta artifacts é ignorada pelo Git.
+## API
 
-## 1. Restaurar e compilar
+Requisitos: Windows x64, SDK **10.0.401** ou patch compatível da linha 10.0.4xx conforme `global.json`, e runtime/ASP.NET Core **9 x64**. O alvo da API é `net9.0`. O `NuGet.Config` usa somente nuget.org; os lockfiles são versionados.
 
-    dotnet --version
-    dotnet restore ScreenshotApi.sln --locked-mode
-    dotnet build ScreenshotApi.sln -c Release --no-restore -m:1 -nr:false -p:BuildInParallel=false
+Na raiz do projeto:
 
-Pare se qualquer comando falhar. Não publique pacotes de build incompleto.
+```powershell
+dotnet restore ScreenshotApi.sln --locked-mode
+dotnet build ScreenshotApi.sln -c Release --no-restore -m:1 -nr:false -p:BuildInParallel=false
+dotnet test --solution ScreenshotApi.sln -c Release --no-build --no-restore
+```
 
-## 2. Testar
+Como alternativa ao runner integrado, o executável xUnit v3 compilado executa os mesmos testes:
 
-    dotnet test --solution ScreenshotApi.sln -c Release --no-build --no-restore
+```powershell
+dotnet tests/ScreenshotApi.Tests/bin/Release/net9.0/ScreenshotApi.Tests.dll -noLogo -result-xml TestResults/api-tests.xml
+```
 
-Se o ambiente não permitir o IPC/named pipe do runner integrado, as mesmas suítes podem ser executadas diretamente, depois do build:
+Última validação: **70 testes aprovados**, build sem erros ou avisos. Os testes HTTP usam TestServer em processo, sem porta real. Cobrem contrato, limites, autenticação, criptografia, adulteração, retenção e HTTP opt-in.
 
-    New-Item -ItemType Directory -Path .\TestResults -Force | Out-Null
-    dotnet .\tests\ScreenshotApi.Tests\bin\Release\net9.0\ScreenshotApi.Tests.dll -noLogo -result-xml .\TestResults\api-tests.xml
-    dotnet .\tests\FileDropMcp.Tests\bin\Release\net9.0\FileDropMcp.Tests.dll -noLogo -result-xml .\TestResults\mcp-tests.xml
+.NET 9 tem suporte até **10/11/2026**; planeje atualizar o alvo e o Hosting Bundle. [Política oficial de suporte](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
 
-Esse runner direto é o executável de testes xUnit v3 compilado, não uma reimplementação dos testes. Ele dispensa a comunicação do comando dotnet test. Use pasta temporária gravável autorizada se o ambiente restringir o TEMP/TMP.
+## Skill
 
-Validação local do opt-in HTTP: **70 testes API passaram; MCP 74 passaram e 1 foi ignorado**, sem falhas. O teste ignorado cria uma junction real e é opt-in via FILEDROP_TEST_JUNCTION=1 somente em ambiente já autorizado. A criação foi negada neste ambiente e não foi repetida. Os demais testes de caminhos passaram.
+Não precisa compilar. Requer Windows PowerShell 5.1, .NET Framework 4.7.2+ e execução de scripts autorizada pela política local:
 
-Cobertura: roundtrip binário, tipos/limites, ciphertext e AES-GCM, adulteração/truncamento, expiração/limpeza com relógio controlado; política de 24h/concorrência/negação/incerteza, HTTP mock, paths, stdio real e instalação em perfil fictício. O teste stdio inicia o processo por stdin/stdout, descobre e chama ferramentas. HTTP usa mocks/TestServer, sem depender de porta local.
+```powershell
+powershell.exe -NoProfile -File tests/skill/Test-FileDrop.ps1
+```
 
-Não foi validado IIS real, acesso HTTP pela rede ou abertura do Codex desktop. Houve uma negação local socket10013 antes do HTTP; a camada que a causou não foi identificada e a operação não foi repetida. O teste de instalador nunca usa o perfil Codex real.
+Última validação: **54 asserções aprovadas** com arquivos fictícios e transporte fake, sem API pública. Inclui cooldown de 24h, tarefa ativa, escopos independentes, HTTP opt-in, upload/GET e hash, erros sem reenvio, caminhos, limite, lock/estado e saída JSON do comando.
 
-## 3. Publicar os binários em pastas novas
+Esses testes foram executados com autorização específica somente para os processos de teste. Isso não habilitou scripts para uso normal nem alterou política permanente. Uma nova execução depende da política/autorização vigente; não contorne bloqueios. Rede real, IIS e criação de junction real não foram validados.
 
-Escolha pastas de saída novas ou vazias para evitar resíduos de compilações anteriores. Estes comandos geram binários localmente, sem iniciar API/MCP e sem instalar nada:
+## Gerar pacotes
 
-    dotnet publish .\src\ScreenshotApi\ScreenshotApi.csproj -c Release --no-restore -o .\artifacts\api-package
-    dotnet publish .\src\FileDropMcp\FileDropMcp.csproj -c Release --no-restore -p:UseAppHost=true -o .\artifacts\mcp-package\server
+Para preparar a publicação da API, escolha uma pasta de saída nova, sem dados ou configuração real:
 
-Em Windows x64, o apphost do MCP gerado é FileDropMcp.exe. É **framework-dependent**: o runtime 9 não vem embutido. A API também requer Hosting Bundle 9 no IIS. Confira que os comandos terminaram com código zero antes de continuar.
+```powershell
+dotnet publish src/ScreenshotApi/ScreenshotApi.csproj -c Release --no-restore -o artifacts/publish/api
+```
 
-## 4. Completar o pacote MCP e compactar
+Compacte o conteúdo publicado preservando o `web.config` gerado. A instalação IIS é manual conforme [SERVER.md](SERVER.md).
 
-    Copy-Item -LiteralPath .\integration\Install-FileDropMcp.ps1 -Destination .\artifacts\mcp-package\
-    Copy-Item -LiteralPath .\integration\Launch-CodexWithFileDrop.ps1 -Destination .\artifacts\mcp-package\
-    Copy-Item -LiteralPath .\integration\skill -Destination .\artifacts\mcp-package\skill -Recurse
-    Copy-Item -LiteralPath .\README.md,.\MCP.md,.\API.md,.\SERVER.md,.\BUILD.md,.\HTTP.md -Destination .\artifacts\mcp-package\
-    Compress-Archive -Path .\artifacts\api-package\* -DestinationPath .\artifacts\FileDropApi-IIS-net9.zip
-    Compress-Archive -Path .\artifacts\mcp-package\* -DestinationPath .\artifacts\FileDropMcp-win-x64-net9.zip
+Os pacotes locais atuais são:
 
-Os arquivos devem ficar diretamente na raiz do ZIP MCP: Install-FileDropMcp.ps1, Launch-CodexWithFileDrop.ps1, server e skill. Não inclua credenciais, configurações reais, estado, dados de usuários ou logs. Preserve o appsettings.json vazio de credenciais do pacote API.
+| Pacote | Conteúdo |
+| --- | --- |
+| `FileDropApi-IIS-net9-skill-v1.1.zip` | Binários da API e `web.config`, dependentes do Hosting Bundle 9 |
+| `FileDrop-skill-v1.1.zip` | Pasta `filedrop`: instruções, configuração e helper |
+| `FileDrop-api-skill-source-v1.1.zip` | Fontes, testes, scripts e documentação atuais |
+| `FileDrop-api-skill-v1.1-SHA256.txt` | Hashes SHA-256 dos três ZIPs |
 
-Não rode estes comandos de empacotamento sobre diretórios de instalação reais. Se os ZIPs já existirem, preserve-os e escolha nomes novos em vez de sobrescrevê-los sem revisão.
+Para o pacote da skill, compacte somente `skills/filedrop` preservando a pasta `filedrop` na raiz do ZIP. Não inclua configuração de usuário, segredo ou estado.
 
-A publicação manual está em [SERVER.md](SERVER.md). A instalação do MCP começa no passo 4 de [README.md](README.md). Não há release/tag/download de binários criado automaticamente no GitHub.
+Para o pacote de fontes, use uma lista explícita de arquivos revisados. Exclua `.git`, `bin`, `obj`, caches, `artifacts`, logs, resultados gerados, perfis de publicação, arquivos `.user`, configuração local, dados e credenciais. Os pacotes não são enviados automaticamente ao GitHub.
+
+Compilar ou empacotar não instala a skill nem publica a API.

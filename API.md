@@ -6,7 +6,7 @@ ASP.NET Core net9.0, sem banco, UI, usuários ou gestão de chaves. Configuraç�
 
 **POST /files** recebe X-Api-Key e multipart/form-data com exatamente um arquivo não vazio no campo **file**, sem outros campos. Qualquer formato é aceito até 104857600 bytes (100 MiB), ou limite menor configurado. A autenticação ocorre antes de ler o corpo. Nome/extensão/MIME fornecidos pelo cliente não autorizam exibição inline.
 
-Retorna **201** e JSON com três campos estáveis: **id**, **url**, **contentType**. Location contém a mesma URL. **X-FileDrop-Expires-At** informa a expiração UTC exata em formato roundtrip ISO 8601; o MCP exige esse header. O JSON não inclui expiresAt.
+Retorna **201** e JSON com três campos estáveis: **id**, **url**, **contentType**. Location contém a mesma URL. **X-FileDrop-Expires-At** informa a expiração UTC exata em formato roundtrip ISO 8601; a skill exige esse header. O JSON não inclui expiresAt.
 
 O ID é aleatório, 64 caracteres hexadecimais. O link segue o formato:
 
@@ -57,15 +57,8 @@ Só considera envelopes de nome/estrutura/versão/tamanho/timestamp reconhecidos
 
 A limpeza depende da aplicação IIS ativa e retoma na inicialização. Não garante remoção no segundo exato, apagamento forense ou eliminação de backups.
 
-## Cliente PowerShell simples
+## Cliente da skill
 
-No PowerShell 7.3+, com arquivo existente e endpoint final HTTPS:
+Use a skill e o helper Windows PowerShell5.1 conforme [README.md](README.md) e [setup.md](skills/filedrop/setup.md). Endpoint/roots ficam em arquivo local fora de Git; a chave vem de FILE_API_KEY ou arquivo separado fornecido pelo usuário. O helper coordena a política de fallback, envia uma vez, bloqueia redirects e verifica bytes/hash do GET sem a chave de POST.
 
-    $env:FILE_API_KEY = Read-Host 'Chave privada de POST' -MaskInput
-    try {
-        .\scripts\Upload-File.ps1 -FilePath 'C:\Agente\Entregas\arquivo.pdf' -Endpoint 'https://files.example.invalid/files'
-    } finally {
-        Remove-Item Env:FILE_API_KEY -ErrorAction SilentlyContinue
-    }
-
-O script envia uma vez, bloqueia redirects, valida o contrato/origem/caminho/segredo e verifica GET sem a chave de POST. Confere status/MIME/nosniff e corpo não vazio. Imprime JSON com o link deliberadamente ao consumidor; não faça transcrição ou persistência dessa saída. Para hash integral e política de fallback, use o MCP.
+A saída JSON contém o link deliberadamente para o consumidor. Não faça transcrição nem persista essa saída. Resultado incerto exige verificar antes de qualquer novo POST.
