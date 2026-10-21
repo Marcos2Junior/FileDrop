@@ -1,9 +1,9 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('policy','record','upload','end')][string]$Action='policy',
+    [ValidateSet('policy','record','upload','resume','end')][string]$Action='policy',
     [string]$Channel='codex-chat', [string]$Capability='file-delivery', [string]$TaskId='',
-    [string]$Outcome='', [string]$Path='',
+    [string]$Outcome='', [string]$Path='', [switch]$UserAuthorized,
     [string]$Config=$(if($env:FILEDROP_SKILL_CONFIG){$env:FILEDROP_SKILL_CONFIG}else{Join-Path $env:LOCALAPPDATA 'FileDropSkill\config.json'})
 )
 $ErrorActionPreference='Stop'
@@ -67,13 +67,11 @@ function Options-FD($o,[string]$full){
     if(![uri]::TryCreate([string]$o.ApiEndpoint,[UriKind]::Absolute,[ref]$uri) -or
        ($uri.Scheme -ne 'https' -and !($uri.Scheme -eq 'http' -and $o.AllowInsecureHttp -is [bool] -and $o.AllowInsecureHttp)) -or
        $uri.UserInfo -or $uri.Query -or $uri.Fragment -or !$uri.AbsolutePath.EndsWith('/files') -or $uri.OriginalString.Contains('%')){Fail-FD 'configuration_invalid'}
-    if($o.Roots -isnot [array] -or $o.Roots.Count -lt 1 -or $o.Roots.Count -gt 32){Fail-FD 'configuration_invalid'}
-    $roots=@(foreach($r in $o.Roots){$p=Local-FD ([string]$r);if(![IO.Directory]::Exists($p)){Fail-FD 'configuration_invalid'};$p})
     $secret=Local-FD (Join-Path ([IO.Path]::GetDirectoryName($full)) 'api-key.txt')
     if($o.SecretFile){$secret=Local-FD ([string]$o.SecretFile)}
     $protection=if($o.SecretProtection){[string]$o.SecretProtection}else{'None'}
     if($protection -notin @('None','CurrentUserDpapi')){Fail-FD 'configuration_invalid'}
-    return @{Endpoint=$uri;Roots=$roots;SecretFile=$secret;SecretProtection=$protection;State=(Join-Path ([IO.Path]::GetDirectoryName($full)) 'state')}
+    return @{Endpoint=$uri;SecretFile=$secret;SecretProtection=$protection;State=(Join-Path ([IO.Path]::GetDirectoryName($full)) 'state')}
 }
 function Read-FDKey($Options){
     $key=$env:FILE_API_KEY;$clear=$null
@@ -134,13 +132,12 @@ function Send-FD($Options,[string]$File,$Client){
     $stream=$null;$post=$null;$response=$null;$get=$null;$verified=$null;$timer=$null;$own=$false
     $sent=$false;$known=$null;$phase='ready'
     try{
-        $key=Read-FDKey $Options
         $full=Local-FD $File
-        if(!@($Options.Roots|Where-Object{Inside-FD $full $_}).Count){Fail-FD 'path_not_allowed'}
+        if(![IO.File]::Exists($full)){Fail-FD 'file_not_found'}
         $stream=[IO.FileStream]::new($full,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
-        $final=Local-FD ([FileDropLocalPath]::Resolve($stream))
-        if(!@($Options.Roots|Where-Object{Inside-FD $final $_}).Count){Fail-FD 'path_not_allowed'}
+        [void](Local-FD ([FileDropLocalPath]::Resolve($stream)))
         if($stream.Length -lt 1 -or $stream.Length -gt 104857600){Fail-FD 'file_size_invalid'}
+        $key=Read-FDKey $Options
         $length=$stream.Length;$sha=[Security.Cryptography.SHA256]::Create()
         try{$expected=$sha.ComputeHash($stream)}finally{$sha.Dispose()}
         $stream.Position=0
@@ -197,8 +194,7 @@ function Send-FD($Options,[string]$File,$Client){
         for($e=$_.Exception;$e;$e=$e.InnerException){
             if($e -is [UnauthorizedAccessException] -or ($e -is [Net.Sockets.SocketException] -and $e.SocketErrorCode -eq [Net.Sockets.SocketError]::AccessDenied)){$denied=$true}
         }
-        if($script:FDCode -eq 'path_not_allowed'){$denied=$true}
-        return @{success=$false;code=$(if($denied){'permission_denied'}elseif($sent){'delivery_uncertain'}elseif($script:FDCode){$script:FDCode}else{'local_file_error'});requiresVerification=($sent -and !$denied);phase=$(if($denied){'denied'}elseif($sent){'uncertain'}else{'ready'})}
+        return @{success=$false;code=$(if($sent){'delivery_uncertain'}elseif($denied){'permission_denied'}elseif($script:FDCode){$script:FDCode}else{'local_file_error'});requiresVerification=$sent;phase=$(if($sent){'uncertain'}elseif($denied){'denied'}else{'ready'})}
     }finally{
         foreach($d in @($verified,$get,$response,$post,$stream,$timer)){if($d){$d.Dispose()}}
         if($own -and $Client){$Client.Dispose()}
@@ -206,7 +202,7 @@ function Send-FD($Options,[string]$File,$Client){
 }
 function Invoke-FileDrop {
     param([string]$Action,[string]$Channel,[string]$Capability,[string]$TaskId,[string]$Outcome,[string]$Path,[string]$Config,
-          $Client=$null,[DateTimeOffset]$Now=[DateTimeOffset]::UtcNow)
+          $Client=$null,[DateTimeOffset]$Now=[DateTimeOffset]::UtcNow,[switch]$UserAuthorized)
     $script:FDCode=$null;$script:FDNow=$Now;$gate=$null;$result=$null
     try{
         foreach($id in @($Channel,$Capability,$TaskId)){if($id -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'){Fail-FD 'invalid_scope'}}
@@ -232,11 +228,25 @@ function Invoke-FileDrop {
         if(!$s.tasks.ContainsKey($taskHash)){$s.tasks[$taskHash]=@{phase='ready';pinned=$false;transport='native'}}
         $t=$s.tasks[$taskHash]
         if($t -isnot [Collections.IDictionary] -or $t.Count -ne 3 -or $t.phase -notin @('ready','native','uploading','denied','cancelled','pending_confirmation','uncertain','closed') -or $t.pinned -isnot [bool] -or $t.transport -notin @('native','filedrop')){Fail-FD 'state_invalid'}
-        if($Action -eq 'end'){$t.phase='closed';$t.pinned=$false;$result=Decision-FD $s $t}
+        if($Action -eq 'resume'){
+            if($t.phase -in @('uncertain','uploading','native')){
+                $result=Decision-FD $s $t;$result.success=$false;$result.requiresVerification=$true
+            }elseif(!$UserAuthorized){Fail-FD 'authorization_required'}
+            elseif($t.phase -notin @('denied','cancelled','pending_confirmation')){Fail-FD 'resume_not_allowed'}
+            else{
+                $t.phase='ready';$result=Decision-FD $s $t
+                if($result.mayTryNative){$t.phase='native';$t.transport='native'}
+            }
+        }elseif($Action -eq 'end'){
+            if($t.phase -in @('uncertain','uploading','native')){
+                $result=Decision-FD $s $t;$result.success=$false;$result.requiresVerification=$true
+            }else{$t.phase='closed';$t.pinned=$false;$result=Decision-FD $s $t}
+        }
         elseif($Action -eq 'record'){
             if($Outcome -notin @('technical_failure','delivered','denied','cancelled','pending_confirmation','uncertain','verified_not_delivered')){Fail-FD 'invalid_outcome'}
             if($t.phase -notin @('denied','cancelled','closed')){
                 if($Outcome -eq 'delivered'){$t.phase='ready';$result=@{success=$true;action='delivered';code='delivery_confirmed'}}
+                elseif($t.phase -in @('uncertain','uploading') -and $Outcome -ne 'verified_not_delivered'){}
                 elseif($t.phase -eq 'pending_confirmation'){}
                 elseif($Outcome -eq 'technical_failure' -and $t.phase -eq 'native'){$s.until=$Now.AddHours(24).ToString('O');$t.phase='ready';$t.pinned=$true}
                 elseif($Outcome -eq 'verified_not_delivered' -and $t.phase -in @('uncertain','uploading')){
@@ -273,7 +283,7 @@ function Invoke-FileDrop {
 }
 if($MyInvocation.InvocationName -ne '.'){
     [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-    $result=Invoke-FileDrop -Action $Action -Channel $Channel -Capability $Capability -TaskId $TaskId -Outcome $Outcome -Path $Path -Config $Config
+    $result=Invoke-FileDrop -Action $Action -Channel $Channel -Capability $Capability -TaskId $TaskId -Outcome $Outcome -Path $Path -Config $Config -UserAuthorized:$UserAuthorized
     Write-FDJson $result
     if(!$result.success){exit 1}
 }

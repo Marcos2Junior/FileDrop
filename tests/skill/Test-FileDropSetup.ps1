@@ -14,7 +14,7 @@ function Fixture-Setup {
 }
 function Save-Setup($F,[string]$Key=$keyOne,[string]$Url='https://files.example.invalid/files',[bool]$Http=$false,[string]$Stamp=''){
     if(!$Stamp){$Stamp=(Read-FDSetup $F.Config).Stamp}
-    return Save-FDSetup -File $F.Config -Endpoint $Url -Roots @($F.Root) -AllowHttp $Http -ApiKey $Key -ExpectedStamp $Stamp
+    return Save-FDSetup -File $F.Config -Endpoint $Url -AllowHttp $Http -ApiKey $Key -ExpectedStamp $Stamp
 }
 function Reject-Setup([scriptblock]$Action,[string]$Code,[string]$Name){
     $caught=$false;$script:FDCode=$null
@@ -26,6 +26,7 @@ try{
     $f=Fixture-Setup
     Check-Setup ((Read-FDSetup $f.Config).Stamp -eq 'absent' -and ![IO.File]::Exists($f.Config)) 'initial read does not write config'
     Check-Setup (Save-Setup $f).success 'new setup saved'
+    Check-Setup (!((Read-FDSetup $f.Config).Values.ContainsKey('Roots'))) 'new configuration has no roots'
     $options=Load-FD $f.Config
     Check-Setup ($options.SecretProtection -eq 'CurrentUserDpapi') 'protected credential format selected'
     Check-Setup ((Read-FDKey $options) -eq $keyOne) 'DPAPI roundtrip for current Windows user'
@@ -51,9 +52,12 @@ try{
         Reject-Setup {Save-Setup $f -Url $url -Http $true} 'configuration_invalid' 'invalid endpoint rejected'
     }
     foreach($badKey in @('short',('A'*257),('A'*40+' '))){Reject-Setup {Save-Setup $f -Key $badKey} 'credentials_unavailable' 'invalid key rejected'}
-    foreach($badRoot in @('relative','\\server\share','C:\fake\file:ads')){
-        Reject-Setup {Save-FDSetup $f.Config 'https://files.example.invalid/files' @($badRoot) $false $keyOne (Stamp-FDSetup $f.Config)} 'path_not_allowed' 'unsafe root rejected'
-    }
+    $legacy=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($f.Config));$legacy.Roots=@('relative-legacy-value','C:\nonexistent-legacy-root')
+    [IO.File]::WriteAllText($f.Config,(Write-FDJson $legacy))
+    Check-Setup (Save-Setup $f -Key '').success 'legacy roots do not require validation or reconfiguration'
+    $preserved=(Read-FDSetup $f.Config).Values
+    Check-Setup (($preserved.Roots -join '|') -eq ($legacy.Roots -join '|')) 'onboarding preserves ignored legacy roots'
+    Check-Setup ((Read-FDKey (Load-FD $f.Config)) -eq $keyOne) 'legacy config keeps protected credential'
     $oldStamp=Stamp-FDSetup $f.Config
     [void](Save-Setup $f)
     $fileCount=@(Get-ChildItem -LiteralPath $f.Dir -File).Count
@@ -88,7 +92,7 @@ try{
         }
     }finally{Set-Item Function:\Save-FD $writer}
     $unsafe=Join-Path $project 'do-not-create-config.json'
-    Reject-Setup {Save-FDSetup $unsafe 'https://files.example.invalid/files' @($f.Root) $false $keyOne 'absent'} 'configuration_location_invalid' 'package/repository cannot hold user config'
+    Reject-Setup {Save-FDSetup $unsafe 'https://files.example.invalid/files' $false $keyOne 'absent'} 'configuration_location_invalid' 'package/repository cannot hold user config'
     Check-Setup (![IO.File]::Exists($unsafe)) 'repository untouched by rejected setup'
     Write-Output ('PASS: '+$count+' onboarding assertions; isolated fake credentials; no UI or network.')
 }finally{

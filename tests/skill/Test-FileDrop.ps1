@@ -22,6 +22,7 @@ public class FileDropFakeHttp : HttpMessageHandler {
             foreach(var part in multipart) Streamed=part is StreamContent;
             await request.Content.ReadAsByteArrayAsync();
             if(Mode=="loss") throw new HttpRequestException("TEST ONLY transport loss");
+            if(Mode=="accessdenied") throw new UnauthorizedAccessException("TEST ONLY access failure after send began");
             if(Mode=="denied" || Mode=="redirect") {
                 var stop=new HttpResponseMessage(Mode=="denied"?HttpStatusCode.Unauthorized:HttpStatusCode.Redirect);
                 stop.Headers.Location=new Uri("https://other.example.invalid/");
@@ -53,14 +54,14 @@ function Fixture {
     $dir=Join-Path $testRoot ([guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory((Join-Path $dir 'files'))
     $cfg=Join-Path $dir 'config.json'
-    $data=@{ApiEndpoint='https://files.example.invalid/files';Roots=@((Join-Path $dir 'files'));AllowInsecureHttp=$false}
+    $data=@{ApiEndpoint='https://files.example.invalid/files';AllowInsecureHttp=$false}
     [IO.File]::WriteAllText($cfg,(Write-FDJson $data))
     $file=Join-Path $dir 'files\input.bin';[IO.File]::WriteAllBytes($file,[byte[]]@(1,2,3,4,255))
     return @{Dir=$dir;Config=$cfg;File=$file;Data=$data}
 }
-function Run($F,[string]$Action,[string]$Task='task',[string]$Outcome='',$Client=$null,[DateTimeOffset]$Clock=$now,[string]$Capability='file-delivery',[string]$File=''){
+function Run($F,[string]$Action,[string]$Task='task',[string]$Outcome='',$Client=$null,[DateTimeOffset]$Clock=$now,[string]$Capability='file-delivery',[string]$File='',[switch]$Authorized){
     if(!$File){$File=$F.File}
-    return Invoke-FileDrop -Action $Action -Channel chat -Capability $Capability -TaskId $Task -Outcome $Outcome -Path $File -Config $F.Config -Client $Client -Now $Clock
+    return Invoke-FileDrop -Action $Action -Channel chat -Capability $Capability -TaskId $Task -Outcome $Outcome -Path $File -Config $F.Config -Client $Client -Now $Clock -UserAuthorized:$Authorized
 }
 function Activate($F){
     [void](Run $F policy)
@@ -81,11 +82,30 @@ try{
     [void](Run $f end)
     Check ((Run $f policy).action -eq 'stop') 'closed task cannot resume'
     Check ((Run $f policy -Task after-cooldown -Clock $now.AddHours(25)).mayTryNative) 'fresh task after cooldown native'
+    Check ((Run $f resume -Authorized).code -eq 'resume_not_allowed') 'closed task cannot be reset by authorization'
     foreach($outcome in @('denied','cancelled','pending_confirmation','uncertain')){
         $f=Fixture;[void](Run $f policy);[void](Run $f record -Outcome $outcome)
         Check (!(Run $f record -Outcome technical_failure).mayUpload) ('no fallback: '+$outcome)
         Check (!(Run $f upload).mayUpload) ('upload blocked: '+$outcome)
     }
+    foreach($outcome in @('denied','cancelled','pending_confirmation')){
+        $f=Fixture;Activate $f;[void](Run $f record -Outcome $outcome)
+        $fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+        try{
+            Check ((Run $f resume).code -eq 'authorization_required') ('resume needs explicit authorization: '+$outcome)
+            Check (!(Run $f upload -Client $client).success -and $fake.Calls -eq 0) ('no POST while blocked: '+$outcome)
+            $result=Run $f resume -Authorized -Clock $now.AddHours(2)
+            Check ($result.success -and $result.mayUpload -and $fake.Calls -eq 0) ('authorized resume preserves pinned fallback without sending: '+$outcome)
+            Check ($result.fallbackUntil -eq $now.AddHours(24).ToString('O')) 'resume does not restart cooldown'
+            Check ((Run $f upload -Client $client).success -and $fake.Calls -eq 2) ('explicit upload after resume: '+$outcome)
+        }finally{$client.Dispose()}
+    }
+    $f=Fixture;[void](Run $f policy);[void](Run $f record -Outcome denied)
+    $result=Run $f resume -Authorized
+    Check ($result.mayTryNative -and !$result.mayUpload) 'authorization alone does not activate fallback'
+    Check ((Run $f policy).code -eq 'result_pending') 'resumed native attempt is reserved once'
+    $f=Fixture
+    Check ((Run $f resume -Authorized).code -eq 'resume_not_allowed') 'resume is only for blocked states'
     $f=Fixture;[void](Run $f policy);[void](Run $f record -Outcome uncertain)
     Check ((Run $f record -Outcome verified_not_delivered).mayUpload) 'confirmed non-delivery resolves uncertainty'
     foreach($scheme in @('https','http')){
@@ -102,7 +122,7 @@ try{
             Check (($state -join '') -notmatch 'https?|\?key|input.bin|TEST-ONLY') 'no secrets/paths in state'
         }finally{$client.Dispose()}
     }
-    foreach($mode in @('loss','denied','redirect','crossorigin','scheme','missingexpiry','badget')){
+    foreach($mode in @('loss','accessdenied','denied','redirect','crossorigin','scheme','missingexpiry','badget')){
         $f=Fixture;Activate $f
         $fake=[FileDropFakeHttp]::new();$fake.Mode=$mode;$client=[Net.Http.HttpClient]::new($fake)
         try{
@@ -110,6 +130,15 @@ try{
             Check (!$result.success) ('failure surfaced: '+$mode)
             [void](Run $f upload -Client $client)
             Check ($fake.Calls -eq $(if($mode -eq 'badget'){2}else{1})) ('no automatic reupload: '+$mode)
+            if($mode -ne 'denied'){
+                Check ((Run $f resume -Authorized).requiresVerification) ('authorization cannot clear uncertain delivery: '+$mode)
+                foreach($blocked in @('denied','cancelled','pending_confirmation')){
+                    Check ((Run $f record -Outcome $blocked).action -eq 'verify') 'record cannot hide uncertainty'
+                }
+                Check ((Run $f end).requiresVerification) 'cannot end task to hide uncertainty'
+                [void](Run $f upload -Client $client)
+                Check ($fake.Calls -eq $(if($mode -eq 'badget'){2}else{1})) 'no POST after attempted uncertainty reset'
+            }
         }finally{$client.Dispose()}
     }
     $f=Fixture;$f.Data.ApiEndpoint='http://files.example.invalid/files'
@@ -122,8 +151,30 @@ try{
     }
     foreach($bad in @('..\outside.bin','\\server\share\file','C:\fake\file:ads')){
         $f=Fixture;Activate $f
-        Check ((Run $f upload -File $bad).code -eq 'permission_denied') 'unapproved path denied'
+        Check ((Run $f upload -File $bad).code -eq 'path_not_allowed') 'invalid path is not a permission denial'
+        Check ((Run $f policy).mayUpload) 'invalid path does not pin task as denied'
     }
+    $f=Fixture;$f.Data.Roots=@((Join-Path $f.Dir 'old-nonexistent-root'),'relative-legacy-value')
+    [IO.File]::WriteAllText($f.Config,(Write-FDJson $f.Data));$oldConfig=[IO.File]::ReadAllText($f.Config)
+    $outside=Join-Path $f.Dir 'outside-old-root.bin';[IO.File]::WriteAllBytes($outside,[byte[]]@(1,2,3,4,255));Activate $f
+    $fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{Check ((Run $f upload -File $outside -Client $client).success -and $fake.Calls -eq 2) 'explicit file outside legacy roots uploads with fake transport'}finally{$client.Dispose()}
+    Check ([IO.File]::ReadAllText($f.Config) -eq $oldConfig) 'legacy config remains unchanged on use'
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        foreach($bad in @((Join-Path $f.Dir 'missing.bin'),$f.Dir)){
+            Check ((Run $f upload -File $bad -Client $client).code -eq 'file_not_found') 'only existing regular files accepted'
+        }
+        [IO.File]::WriteAllBytes($f.File,[byte[]]@())
+        Check ((Run $f upload -Client $client).code -eq 'file_size_invalid') 'empty file rejected'
+        Check ($fake.Calls -eq 0) 'invalid files never reach HTTP'
+    }finally{$client.Dispose()}
+    $f=Fixture;Activate $f
+    $stateFile=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.json)[0].FullName
+    $state=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($stateFile));$state.tasks[(Hash-FD 'task')].phase='uploading'
+    [IO.File]::WriteAllText($stateFile,(Write-FDJson $state))
+    Check ((Run $f resume -Authorized).requiresVerification) 'interrupted upload cannot be resumed by authorization'
+    Check ((Run $f end).requiresVerification) 'interrupted upload cannot be closed without verification'
     $f=Fixture;Activate $f
     $large=[IO.File]::Create($f.File);$large.SetLength(104857601);$large.Dispose()
     Check ((Run $f upload).code -eq 'file_size_invalid') '100MiB limit checked before network'
@@ -164,6 +215,15 @@ try{
         $json=$script:FDJson.DeserializeObject($out)
         Check ($child.ExitCode -eq 0 -and $json.success -and $json.mayTryNative) 'real CLI JSON and exit status'
         Check (!$err -and $out -notmatch 'TEST-ONLY|\?key=') 'real CLI emits no credential or debug output'
+    }finally{$child.Dispose()}
+    $f=Fixture;Activate $f;[void](Run $f record -Outcome denied)
+    $info.Arguments='-NoProfile -ExecutionPolicy RemoteSigned -File "'+$helper+'" -Action resume -Channel chat -TaskId task -UserAuthorized -Config "'+$f.Config+'"'
+    $child=[Diagnostics.Process]::Start($info)
+    try{
+        $out=$child.StandardOutput.ReadToEnd();$err=$child.StandardError.ReadToEnd()
+        if(!$child.WaitForExit(20000)){$child.Kill();throw 'Test child timed out.'}
+        $json=$script:FDJson.DeserializeObject($out)
+        Check ($child.ExitCode -eq 0 -and $json.success -and $json.mayUpload -and !$err) 'CLI exposes explicit authorized resume'
     }finally{$child.Dispose()}
     $f=Fixture;$savedWriter=(Get-Command Save-FD -CommandType Function).ScriptBlock
     try{

@@ -1,9 +1,9 @@
 ---
 name: setup
-description: Configurar ou alterar o FileDrop no Windows usando uma janela local para endereço da API, chave de POST e pastas permitidas.
+description: Configurar ou alterar o FileDrop no Windows usando uma janela local para endereço da API e chave de POST.
 ---
 
-Use para a configuração inicial do FileDrop ou quando o usuário quiser mudar endereço, chave ou pastas. Leia [as instruções locais](../filedrop/setup.md). A configuração não faz upload nem muda a API.
+Use para a configuração inicial do FileDrop ou quando o usuário quiser mudar endereço ou chave. Leia [as instruções locais](../filedrop/setup.md). A configuração não faz upload nem muda a API.
 
 Abra o configurador incluído no plugin, no computador Windows onde o agente executará as entregas:
 

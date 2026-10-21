@@ -26,7 +26,6 @@ O agente abre uma janela local. Preencha:
 
 - **Endereço da API:** URL final terminando em `/files`.
 - **Chave de POST:** a mesma configurada no servidor, digitada diretamente no campo mascarado.
-- **Pastas permitidas:** pastas locais existentes de onde o agente poderá entregar arquivos.
 - **Permitir HTTP:** marque apenas se o servidor usar HTTP e também estiver configurado para isso.
 
 Clique em **Salvar**. O configurador grava os arquivos necessários automaticamente fora do Git e protege a chave para seu usuário do Windows com DPAPI. Não cole a chave na conversa. Nenhum arquivo é enviado durante o onboarding.
@@ -38,6 +37,10 @@ Clique em **Salvar**. O configurador grava os arquivos necessários automaticame
 Use uma conversa com FileDrop selecionado e peça a entrega do arquivo desejado. O agente tenta o nativo primeiro e, quando o fallback for autorizado pela política, o helper envia o arquivo, confere o download e devolve o link e a expiração.
 
 A skill orienta o agente; ela não captura screenshots nem observa ferramentas nativas sozinha. Somente arquivos solicitados podem ser enviados.
+
+Não há cadastro de pastas. O agente indica o arquivo autorizado pelo usuário, e o helper valida se é um arquivo local regular de até 100 MiB. Poder ler o arquivo não significa ter autorização para enviá-lo.
+
+Ao atualizar para **1.3.0**, instale o ZIP atual e abra uma nova conversa com o plugin atualizado. A configuração e a chave existentes são preservadas; o antigo campo `Roots` é ignorado. Não é preciso republicar a API.
 
 ## Pacotes disponíveis
 
@@ -52,14 +55,14 @@ O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuraç
 ## Mais informações
 
 - [Servidor IIS](SERVER.md): publicação, variáveis, limite e logs.
-- [Configuração do cliente](skills/filedrop/setup.md): trocar URL/chave, instalação manual e opções avançadas.
+- [Configuração do cliente](skills/filedrop/setup.md): trocar URL/chave, retomar entrega autorizada e opções avançadas.
 - [Contrato da API](API.md): POST, GET, criptografia e erros.
 - [HTTP explícito](HTTP.md): habilitar nos dois lados.
 - [Desenvolvimento](BUILD.md): compilar, testar e atualizar os pacotes.
 
 ## Limites e problemas comuns
 
-- Negação de permissão, cancelamento e confirmação pendente não ativam fallback. Entrega incerta precisa ser verificada antes de repetir. Não há retry automático de upload.
+- Negação de permissão, cancelamento e confirmação pendente não ativam fallback. Após nova autorização do usuário, o agente pode retomar a mesma tarefa com `resume -UserAuthorized`. Entrega incerta precisa ser verificada antes de repetir, mesmo com autorização. Não há retry automático de upload.
 - HTTPS é o padrão. HTTP expõe chave, arquivos e segredo dos links no tráfego.
 - A limpeza roda ao iniciar a API e periodicamente enquanto ela estiver ativa; o download recusa expirados mesmo entre varreduras.
 - Não há antivírus, galeria ou reprodução por intervalos de bytes. A API atende uma transferência por vez; formatos ativos/desconhecidos são oferecidos como download.
@@ -71,7 +74,8 @@ O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuraç
 | 401 | Chave do cliente igual a `Files__ApiKey` do servidor |
 | 413 | Arquivo até 100 MiB; limite IIS/proxy de pelo menos 104923136 bytes |
 | Certificado/redirect | URL final direta e certificado confiável |
-| `path_not_allowed` | Arquivo em pasta permitida, existente e sem links de pasta |
+| `path_not_allowed` / `file_not_found` | Arquivo local absoluto, existente, sem ADS ou links de pasta; não há lista de pastas permitidas |
+| `permission_denied` / `cancelled` / `pending_confirmation` | Resolver a causa e autorizar explicitamente a retomada; o agente usa `resume` na mesma tarefa |
 | Link 404 | Link completo e arquivo ainda dentro dos sete dias |
 | `delivery_uncertain` | Verificar a entrega anterior antes de reenviar |
 | Fallback após 24h | A tarefa ativa mantém a escolha até seu encerramento |

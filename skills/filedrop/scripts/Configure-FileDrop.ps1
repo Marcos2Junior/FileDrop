@@ -14,7 +14,7 @@ function Stamp-FDSetup([string]$File){
 }
 function Read-FDSetup([string]$File){
     $stamp=Stamp-FDSetup $File
-    $values=@{ApiEndpoint='';Roots=@();AllowInsecureHttp=$false}
+    $values=@{ApiEndpoint='';AllowInsecureHttp=$false}
     if($stamp -ne 'absent'){
         try{
             $raw=$script:FDJson.DeserializeObject([IO.File]::ReadAllText((Local-FD $File)))
@@ -25,7 +25,7 @@ function Read-FDSetup([string]$File){
     }
     return @{Stamp=$stamp;Values=$values}
 }
-function Save-FDSetup([string]$File,[string]$Endpoint,[string[]]$Roots,[bool]$AllowHttp,[string]$ApiKey,[string]$ExpectedStamp){
+function Save-FDSetup([string]$File,[string]$Endpoint,[bool]$AllowHttp,[string]$ApiKey,[string]$ExpectedStamp){
     $script:FDCode=$null;$gate=$null;$clear=$null
     try{
         $full=Local-FD $File;$dir=[IO.Path]::GetDirectoryName($full)
@@ -38,7 +38,7 @@ function Save-FDSetup([string]$File,[string]$Endpoint,[string[]]$Roots,[bool]$Al
         }
         $current=Read-FDSetup $full
         $candidate=$current.Values
-        $candidate.ApiEndpoint=$Endpoint.Trim();$candidate.Roots=@($Roots);$candidate.AllowInsecureHttp=$AllowHttp
+        $candidate.ApiEndpoint=$Endpoint.Trim();$candidate.AllowInsecureHttp=$AllowHttp
         $newSecret=$null
         if($ApiKey){
             if($ApiKey.Length -lt 32 -or $ApiKey.Length -gt 256 -or $ApiKey -cmatch '[^!-~]'){Fail-FD 'credentials_unavailable'}
@@ -73,7 +73,7 @@ function Show-FDSetup([string]$File){
     $initial=Read-FDSetup $File
     [Windows.Forms.Application]::EnableVisualStyles()
     $form=New-Object Windows.Forms.Form
-    $form.Text='Configurar FileDrop';$form.ClientSize=New-Object Drawing.Size(690,485)
+    $form.Text='Configurar FileDrop';$form.ClientSize=New-Object Drawing.Size(690,355)
     $form.StartPosition='CenterScreen';$form.FormBorderStyle='FixedDialog';$form.MaximizeBox=$false
     $form.Font=New-Object Drawing.Font('Segoe UI',10)
     function Label-FDSetup([string]$Text,[int]$Top,[int]$Height=25){
@@ -88,26 +88,17 @@ function Show-FDSetup([string]$File){
     Label-FDSetup 'Chave de POST (32 a 256 caracteres; oculta)' 145
     $key=New-Object Windows.Forms.TextBox;$key.SetBounds(20,174,650,28);$key.UseSystemPasswordChar=$true;$key.MaxLength=256;$form.Controls.Add($key)
     Label-FDSetup 'Deixe em branco para manter a chave existente. FILE_API_KEY tem prioridade.' 207
-    Label-FDSetup 'Pastas permitidas: uma pasta local existente por linha' 240
-    $roots=New-Object Windows.Forms.TextBox;$roots.SetBounds(20,270,495,95);$roots.Multiline=$true;$roots.ScrollBars='Vertical'
-    $roots.Text=@($initial.Values.Roots) -join [Environment]::NewLine;$form.Controls.Add($roots)
-    $browse=New-Object Windows.Forms.Button;$browse.Text='Adicionar pasta';$browse.SetBounds(525,270,145,34);$form.Controls.Add($browse)
-    $browse.Add_Click({
-        $dialog=New-Object Windows.Forms.FolderBrowserDialog
-        try{if($dialog.ShowDialog($form) -eq 'OK'){$roots.AppendText($(if($roots.Text){[Environment]::NewLine}else{''})+$dialog.SelectedPath)}}finally{$dialog.Dispose()}
-    })
-    $notice=New-Object Windows.Forms.Label;$notice.SetBounds(20,378,650,45);$notice.Text='A chave sera protegida para seu usuario do Windows. Nenhum upload sera feito.';$form.Controls.Add($notice)
-    $save=New-Object Windows.Forms.Button;$save.Text='Salvar';$save.SetBounds(450,436,105,32);$form.Controls.Add($save)
-    $cancel=New-Object Windows.Forms.Button;$cancel.Text='Cancelar';$cancel.SetBounds(565,436,105,32);$cancel.DialogResult='Cancel';$form.Controls.Add($cancel)
+    $notice=New-Object Windows.Forms.Label;$notice.SetBounds(20,245,650,45);$notice.Text='A chave sera protegida para seu usuario do Windows. Nenhum upload sera feito.';$form.Controls.Add($notice)
+    $save=New-Object Windows.Forms.Button;$save.Text='Salvar';$save.SetBounds(450,306,105,32);$form.Controls.Add($save)
+    $cancel=New-Object Windows.Forms.Button;$cancel.Text='Cancelar';$cancel.SetBounds(565,306,105,32);$cancel.DialogResult='Cancel';$form.Controls.Add($cancel)
     $form.AcceptButton=$save;$form.CancelButton=$cancel
     $save.Add_Click({
         try{
-            $selected=@($roots.Lines | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            $form.Tag=Save-FDSetup -File $File -Endpoint $endpoint.Text -Roots $selected -AllowHttp $http.Checked -ApiKey $key.Text -ExpectedStamp $initial.Stamp
+            $form.Tag=Save-FDSetup -File $File -Endpoint $endpoint.Text -AllowHttp $http.Checked -ApiKey $key.Text -ExpectedStamp $initial.Stamp
             $form.DialogResult='OK';$form.Close()
         }catch{
             $messages=@{
-                configuration_invalid='Confira endereco e pastas existentes (sem links de pasta).'
+                configuration_invalid='Confira o endereco da API e a opcao de HTTP.'
                 credentials_unavailable='Informe uma chave valida, ou mantenha uma credencial existente valida.'
                 configuration_changed='A configuracao mudou enquanto a janela estava aberta. Reabra o configurador.'
                 configuration_busy='Outra configuracao esta em andamento. Aguarde.'
