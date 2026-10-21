@@ -42,7 +42,7 @@ Por padrão, em `%LOCALAPPDATA%\FileDropSkill`:
 | --- | --- |
 | `config.json` | Endereço e referência ao arquivo de chave |
 | `api-key-*.dpapi` | Chave cifrada com DPAPI para o usuário atual do Windows |
-| `state` | Hashes, horários e estados de entrega, sem links, chaves, caminhos ou conteúdo |
+| `state` | Hashes, horários e estados de entrega; `*.retries.json` guarda contadores e histórico por arquivo, sem links, chaves, caminhos ou conteúdo |
 | `setup.lock` | Coordenação de gravações do configurador |
 
 A chave protegida depende do perfil do Windows; não basta copiar seu arquivo para outro usuário ou computador. Refaça o onboarding nesse caso. A proteção não impede acesso por processos do mesmo usuário ou por administradores que monitorem memória.
@@ -90,21 +90,37 @@ Get-Content "$env:LOCALAPPDATA\FileDropSkill\config.json" -Raw | ConvertFrom-Jso
 
 Isso não testa credencial, rede ou entrega. O onboarding também não faz upload. Não invente falha nativa para testar FileDrop.
 
-O helper confere caminho final, limite de 100 MiB, origem da resposta, expiração e SHA-256 do download integral. Usa streaming no cliente e timeout total de quatro minutos. A API precisa retornar `X-FileDrop-Expires-At`. A saída é JSON; falha retorna código 1. Não há redirects nem retry automático.
+O helper confere caminho final, limite de 100 MiB, origem da resposta, expiração e SHA-256 do download integral. Usa streaming no cliente e timeout total de quatro minutos por tentativa. A API precisa retornar `X-FileDrop-Expires-At`. A saída é JSON; falha retorna código 1. Não há redirects. Cada comando faz no máximo um POST; a skill pode repetir uma falha técnica dentro da política abaixo.
 
-Estado ocupado/corrompido ou entrega incerta bloqueia nova ação; investigue sem apagar o estado para forçar reenvio. Para `Restricted`, siga a liberação temporária autorizada descrita acima. Outros bloqueios de execução exigem resolver a causa, sem novas tentativas equivalentes.
+Estado ocupado/corrompido ou falha de gravação bloqueia nova ação; investigue sem apagar o estado para forçar reenvio. Para `Restricted`, siga a liberação temporária autorizada descrita acima. Outros bloqueios de execução exigem resolver a causa, sem novas tentativas equivalentes.
 
-## Retomar uma entrega autorizada
+## Tentativas e retomada
+
+Uma falha técnica permite até **três tentativas totais por arquivo na mesma tarefa**, incluindo a inicial. Cada repetição aguarda no mínimo **dois minutos após o término da tentativa anterior**. O helper retorna `attempts`, `maxAttempts` e `nextAttemptAt`; não dorme nem abre um loop de POST. A skill espera o prazo e chama novamente. Um arquivo com erro não consome o limite dos outros arquivos nem bloqueia a tarefa inteira.
+
+Os contadores são gravados atomicamente **antes do POST**, sob o mesmo lock de execução. Reiniciar o helper não zera o limite. O histórico guarda hashes do TaskId/caminho, horários, resultado incerto ou confirmado, diagnóstico enumerado e status HTTP. Não contém nomes, links, chaves nem mensagens livres de exceção. Não altere TaskId/caminho nem apague estado para conseguir novas tentativas.
+
+São técnicos: falha de DNS/conexão, timeout e HTTP 408/429/5xx transitório. Recusa de acesso, cancelamento, credencial/arquivo inválido, falha de certificado, redirect, erro de contrato e conteúdo divergente não recebem retry automático. Os campos `stage`, `diagnostic` e `httpStatus` ajudam a identificar a causa sem revelar segredos. O diagnóstico não autoriza alterar infraestrutura ou permissões.
+
+Para consultar uma repetição, mantenha Channel/Capability/TaskId e o caminho original:
+
+```powershell
+powershell.exe -NoProfile -File "<skill>/scripts/filedrop.ps1" -Action resume -TaskId "<mesmo-id>" -Path "<mesmo-caminho-absoluto>"
+```
+
+`retry_wait` manda aguardar `nextAttemptAt`. `retry_authorization_required` exige nova autorização explícita do usuário. Após essa aprovação, acrescente `-UserAuthorized` ao comando: ele aumenta o limite em **uma tentativa**, sem zerar o contador ou diminuir o intervalo. Repetir a autorização antes de usar essa tentativa não acumula créditos. A permissão de instalar o plugin ou usar `RemoteSigned` não substitui essa nova aprovação de envio. A operação `resume` não envia o arquivo; siga a decisão retornada e use `upload` explicitamente.
+
+Se houver uma URL conhecida de uma tentativa incerta, verifique por GET antes de repetir. Uma falha técnica do GET não comprova ausência. Se não for possível confirmar a entrega, duplicação de arquivos temporários é aceita dentro desta política, e os resultados anteriores permanecem `uncertain`, mesmo após uma tentativa posterior dar certo. Nunca marque `verified_not_delivered` sem prova. `already_delivered` impede outro POST de um envio já verificado. A URL continua somente na saída/contexto do agente, sem ser salva para recuperação.
+
+Se o processo parar durante um envio, a reserva persistida é incerta. Por segurança, o próximo horário permitido fica seis minutos após o início reservado (timeout máximo de quatro minutos mais dois de intervalo). Em tarefas antigas da versão 1.3.0 sem registro de tentativas, o agente só pode adotar o arquivo pendente quando o contexto confiável identificar esse arquivo e o usuário autorizar: use `resume` com `-Path` e `-UserAuthorized`. O helper registra uma tentativa anterior incerta com `legacy_unknown_time` e aguarda dois minutos a partir dessa observação; não inventa o horário original nem uma confirmação de ausência.
 
 Após `denied`, `cancelled` ou `pending_confirmation`, só retome quando houver nova autorização explícita do usuário na conversa para aquela entrega. O agente mantém os mesmos Channel, Capability e TaskId e executa:
 
 ```powershell
-powershell.exe -NoProfile -File "<skill>/scripts/filedrop.ps1" -Action resume -TaskId "<mesmo-id>" -UserAuthorized
+powershell.exe -NoProfile -File "<skill>/scripts/filedrop.ps1" -Action resume -TaskId "<mesmo-id>" -Path "<mesmo-caminho-absoluto>" -UserAuthorized
 ```
 
-Passe também `-Channel` e `-Capability` se usou valores diferentes dos padrões. A flag é uma declaração do agente de que conferiu a autorização no contexto confiável; o helper não verifica mensagens nem aceita evidência textual como argumento. Sem a flag, a tarefa permanece bloqueada. A retomada não envia arquivo e não altera o prazo de fallback. O agente segue a decisão retornada e faz o upload explicitamente, se permitido. Uma negação do sistema/API ainda precisa ter sua causa resolvida.
-
-Uma entrega incerta ou em andamento não pode ser liberada por essa operação, nem encerrada para esconder a pendência. Primeiro verifique se chegou. Somente após comprovar a ausência registre `verified_not_delivered`; se chegou, registre `delivered`. Aprovação para tentar novamente não comprova ausência. Não mude o TaskId nem apague estado. Estados das versões anteriores continuam reconhecidos; a tarefa antiga pode ser retomada após nova autorização válida, sem reset.
+Passe também `-Channel` e `-Capability` se usou valores diferentes dos padrões. A flag declara que o agente conferiu a autorização no contexto confiável; o helper não verifica mensagens nem recebe evidência textual como argumento. Sem ela, a negação/cancelamento/confirmação pendente continua bloqueando. A causa da recusa ainda precisa ser resolvida. A retomada não envia arquivo nem altera o prazo de fallback de 24 horas. Incerteza nativa continua exigindo verificação; o histórico de incertezas FileDrop é preservado ao retomar ou encerrar a tarefa.
 
 ## Remover
 

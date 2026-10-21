@@ -40,7 +40,9 @@ A skill orienta o agente; ela não captura screenshots nem observa ferramentas n
 
 Não há cadastro de pastas. O agente indica o arquivo autorizado pelo usuário, e o helper valida se é um arquivo local regular de até 100 MiB. Poder ler o arquivo não significa ter autorização para enviá-lo.
 
-Ao atualizar para **1.3.0**, instale o ZIP atual e abra uma nova conversa com o plugin atualizado. A configuração e a chave existentes são preservadas; o antigo campo `Roots` é ignorado. Não é preciso republicar a API.
+Ao atualizar para **1.4.0**, instale o ZIP atual e abra uma nova conversa com o plugin atualizado. A configuração e a chave existentes são preservadas; o antigo campo `Roots` é ignorado. Não é preciso republicar a API.
+
+Se houver falha técnica de envio, são permitidas **três tentativas totais por arquivo**, com pelo menos **dois minutos entre elas**. Contador e horários ficam salvos para sobreviver ao reinício. Depois do limite, o agente pede autorização para mais uma tentativa. Duplicação temporária é aceita, mas uma entrega incerta nunca é registrada como ausente sem prova. Arquivos diferentes têm limites separados.
 
 ## Pacotes disponíveis
 
@@ -62,7 +64,7 @@ O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuraç
 
 ## Limites e problemas comuns
 
-- Negação de permissão, cancelamento e confirmação pendente não ativam fallback. Após nova autorização do usuário, o agente pode retomar a mesma tarefa com `resume -UserAuthorized`. Entrega incerta precisa ser verificada antes de repetir, mesmo com autorização. Não há retry automático de upload.
+- Negação de permissão, cancelamento e confirmação pendente não ativam fallback nem recebem retry automático. Após nova autorização e resolução da causa, o agente pode retomar a mesma tarefa. Falhas técnicas FileDrop seguem o limite de três tentativas e dois minutos; quando houver link conhecido, o agente verifica antes de repetir. Credencial/arquivo inválido, certificado e outras falhas definitivas exigem corrigir a causa.
 - HTTPS é o padrão. HTTP expõe chave, arquivos e segredo dos links no tráfego.
 - A limpeza roda ao iniciar a API e periodicamente enquanto ela estiver ativa; o download recusa expirados mesmo entre varreduras.
 - Não há antivírus, galeria ou reprodução por intervalos de bytes. A API atende uma transferência por vez; formatos ativos/desconhecidos são oferecidos como download.
@@ -77,5 +79,6 @@ O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuraç
 | `path_not_allowed` / `file_not_found` | Arquivo local absoluto, existente, sem ADS ou links de pasta; não há lista de pastas permitidas |
 | `permission_denied` / `cancelled` / `pending_confirmation` | Resolver a causa e autorizar explicitamente a retomada; o agente usa `resume` na mesma tarefa |
 | Link 404 | Link completo e arquivo ainda dentro dos sete dias |
-| `delivery_uncertain` | Verificar a entrega anterior antes de reenviar |
+| `delivery_uncertain` | Verificar o link conhecido; se continuar incerto por falha técnica, seguir `nextAttemptAt` e o limite de tentativas, aceitando possível duplicação |
+| `retry_wait` / `retry_authorization_required` | Aguardar o horário retornado / autorizar explicitamente mais uma tentativa |
 | Fallback após 24h | A tarefa ativa mantém a escolha até seu encerramento |

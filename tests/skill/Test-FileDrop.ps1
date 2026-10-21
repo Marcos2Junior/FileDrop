@@ -11,18 +11,26 @@ using System.Threading;
 using System.Threading.Tasks;
 public class FileDropFakeHttp : HttpMessageHandler {
     public string Mode="success", Endpoint="https://files.example.invalid/files";
-    public int Calls;
+    public int Calls, PostCalls;
+    public Action OnPost;
     public bool PostKey, GetKey, Streamed;
     public byte[] Bytes=new byte[]{1,2,3,4,255};
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token) {
         Calls++;
         if(request.Method==HttpMethod.Post) {
+            PostCalls++;
+            if(OnPost!=null) OnPost();
             PostKey=request.Headers.Contains("X-Api-Key");
             var multipart=(MultipartFormDataContent)request.Content;
             foreach(var part in multipart) Streamed=part is StreamContent;
             await request.Content.ReadAsByteArrayAsync();
             if(Mode=="loss") throw new HttpRequestException("TEST ONLY transport loss");
             if(Mode=="accessdenied") throw new UnauthorizedAccessException("TEST ONLY access failure after send began");
+            if(Mode=="timeout") throw new TimeoutException("TEST ONLY timeout");
+            if(Mode=="dns") throw new HttpRequestException("TEST ONLY secret https://files.example.invalid/?key=FAKE-ONLY",new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.HostNotFound));
+            if(Mode=="tls") throw new HttpRequestException("TEST ONLY TLS",new System.Security.Authentication.AuthenticationException());
+            if(Mode=="cancelled") throw new OperationCanceledException("TEST ONLY cancellation");
+            if(Mode.StartsWith("status")) return new HttpResponseMessage((HttpStatusCode)int.Parse(Mode.Substring(6)));
             if(Mode=="denied" || Mode=="redirect") {
                 var stop=new HttpResponseMessage(Mode=="denied"?HttpStatusCode.Unauthorized:HttpStatusCode.Redirect);
                 stop.Headers.Location=new Uri("https://other.example.invalid/");
@@ -37,6 +45,7 @@ public class FileDropFakeHttp : HttpMessageHandler {
             return r;
         }
         GetKey=request.Headers.Contains("X-Api-Key");
+        if(Mode=="getloss") throw new HttpRequestException("TEST ONLY download outage");
         var get=new HttpResponseMessage(HttpStatusCode.OK);
         get.Content=new ByteArrayContent(Mode=="badget"?new byte[]{9}:Bytes);
         get.Content.Headers.ContentType=new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
@@ -119,7 +128,7 @@ try{
             Check ($fake.Calls -eq 2 -and $fake.PostKey -and !$fake.GetKey -and $fake.Streamed) 'one streaming POST and credential-free GET'
             Check ($result.expiresAt -and $result.url -and $result.contentType) 'agent result fields'
             $state=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.json)|ForEach-Object{[IO.File]::ReadAllText($_.FullName)}
-            Check (($state -join '') -notmatch 'https?|\?key|input.bin|TEST-ONLY') 'no secrets/paths in state'
+            Check (($state -join '') -notmatch 'https?://|\?key|input.bin|TEST-ONLY') 'no secrets/paths in state'
         }finally{$client.Dispose()}
     }
     foreach($mode in @('loss','accessdenied','denied','redirect','crossorigin','scheme','missingexpiry','badget')){
@@ -130,15 +139,7 @@ try{
             Check (!$result.success) ('failure surfaced: '+$mode)
             [void](Run $f upload -Client $client)
             Check ($fake.Calls -eq $(if($mode -eq 'badget'){2}else{1})) ('no automatic reupload: '+$mode)
-            if($mode -ne 'denied'){
-                Check ((Run $f resume -Authorized).requiresVerification) ('authorization cannot clear uncertain delivery: '+$mode)
-                foreach($blocked in @('denied','cancelled','pending_confirmation')){
-                    Check ((Run $f record -Outcome $blocked).action -eq 'verify') 'record cannot hide uncertainty'
-                }
-                Check ((Run $f end).requiresVerification) 'cannot end task to hide uncertainty'
-                [void](Run $f upload -Client $client)
-                Check ($fake.Calls -eq $(if($mode -eq 'badget'){2}else{1})) 'no POST after attempted uncertainty reset'
-            }
+            Check ($result.retryable -eq ($mode -eq 'loss')) ('only technical transport errors are retryable: '+$mode)
         }finally{$client.Dispose()}
     }
     $f=Fixture;$f.Data.ApiEndpoint='http://files.example.invalid/files'
@@ -171,10 +172,12 @@ try{
     }finally{$client.Dispose()}
     $f=Fixture;Activate $f
     $stateFile=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.json)[0].FullName
-    $state=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($stateFile));$state.tasks[(Hash-FD 'task')].phase='uploading'
+    $state=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($stateFile));$state.tasks[(Hash-FD 'task')].phase='uploading';$state.tasks[(Hash-FD 'task')].transport='filedrop'
     [IO.File]::WriteAllText($stateFile,(Write-FDJson $state))
-    Check ((Run $f resume -Authorized).requiresVerification) 'interrupted upload cannot be resumed by authorization'
-    Check ((Run $f end).requiresVerification) 'interrupted upload cannot be closed without verification'
+    $legacy=Run $f resume -Authorized
+    Check ($legacy.code -eq 'retry_wait' -and $legacy.previousDeliveryUncertain -and $legacy.attempts -eq 1) 'legacy uncertain upload adopted honestly with two-minute delay'
+    $legacyReady=Run $f resume -Clock $now.AddMinutes(2)
+    Check $legacyReady.mayUpload ('legacy task has supported retry without editing state: '+$legacyReady.code)
     $f=Fixture;Activate $f
     $large=[IO.File]::Create($f.File);$large.SetLength(104857601);$large.Dispose()
     Check ((Run $f upload).code -eq 'file_size_invalid') '100MiB limit checked before network'
@@ -216,6 +219,88 @@ try{
         Check ($child.ExitCode -eq 0 -and $json.success -and $json.mayTryNative) 'real CLI JSON and exit status'
         Check (!$err -and $out -notmatch 'TEST-ONLY|\?key=') 'real CLI emits no credential or debug output'
     }finally{$child.Dispose()}
+    $env:FILE_API_KEY=$fakeKey
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$fake.Mode='loss';$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        $first=Run $f upload -Client $client
+        Check (!$first.success -and $first.retryable -and $first.attempts -eq 1 -and $first.requiresVerification) ('first ambiguous attempt recorded honestly: code='+$first.code+' diagnostic='+$first.diagnostic+' attempts='+$first.attempts+' retryable='+$first.retryable)
+        Check ((Run $f upload -Client $client -Clock $now.AddSeconds(119)).code -eq 'retry_wait' -and $fake.PostCalls -eq 1) 'cannot retry before two minutes'
+        $second=Run $f upload -Client $client -Clock $now.AddMinutes(2)
+        Check ($second.attempts -eq 2 -and $fake.PostCalls -eq 2) 'second total attempt after two minutes'
+        Check ((Run $f resume -Clock $now.AddMinutes(3)).code -eq 'retry_wait') 'resume respects persisted interval'
+        $third=Run $f upload -Client $client -Clock $now.AddMinutes(4)
+        Check ($third.attempts -eq 3 -and $fake.PostCalls -eq 3) 'third total attempt after second interval'
+        Check ((Run $f upload -Client $client -Clock $now.AddMinutes(6)).code -eq 'retry_authorization_required' -and $fake.PostCalls -eq 3) 'fourth POST blocked without explicit authorization'
+        Check ((Run $f resume -Clock $now.AddMinutes(6)).code -eq 'retry_authorization_required') 'resume cannot silently reset limit'
+        $info.Arguments='-NoProfile -ExecutionPolicy RemoteSigned -File "'+$helper+'" -Action policy -Channel chat -TaskId task -Path "'+$f.File+'" -Config "'+$f.Config+'"'
+        $child=[Diagnostics.Process]::Start($info)
+        try{$out=$child.StandardOutput.ReadToEnd();$err=$child.StandardError.ReadToEnd();$child.WaitForExit();$json=$script:FDJson.DeserializeObject($out);Check ($json.code -eq 'retry_authorization_required' -and $json.attempts -eq 3 -and !$err) 'new helper process preserves attempt limit'}finally{$child.Dispose()}
+        $granted=Run $f resume -Authorized -Clock $now.AddMinutes(4).AddSeconds(1)
+        Check ($granted.maxAttempts -eq 4 -and $granted.code -eq 'retry_wait') 'authorization grants one extra attempt without shortening delay'
+        Check ((Run $f resume -Authorized -Clock $now.AddMinutes(5)).maxAttempts -eq 4) 'duplicate authorization call does not accumulate credits'
+        $fake.Mode='success';$done=Run $f upload -Client $client -Clock $now.AddMinutes(6)
+        Check ($done.success -and $done.attempts -eq 4 -and $done.previousDeliveryUncertain -and $fake.PostCalls -eq 4) 'authorized fourth attempt can succeed without denying earlier uncertainty'
+        Check ((Run $f upload -Client $client -Clock $now.AddMinutes(10)).code -eq 'already_delivered' -and $fake.PostCalls -eq 4) 'verified delivery is not automatically uploaded again'
+        $history=[IO.File]::ReadAllText(@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.retries.json)[0].FullName)
+        $registry=$script:FDJson.DeserializeObject($history);$ledger=@($registry.files.Values)[0]
+        Check ($ledger.history.Count -eq 4 -and @($ledger.history|Where-Object{$_.outcome -eq 'uncertain'}).Count -eq 3) 'earlier uncertain attempts remain in persistent history'
+        Check ($history -notmatch 'https?://|\?key|input.bin|TEST-ONLY|FAKE-ONLY') 'retry history contains no paths, links, errors or credentials'
+    }finally{$client.Dispose()}
+    foreach($mode in @('timeout','dns','status408','status429','status500','status503','getloss','tls','accessdenied','denied','cancelled','status400','status401','status403','status413','status501','status505')){
+        $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$fake.Mode=$mode;$client=[Net.Http.HttpClient]::new($fake)
+        try{
+            $result=Run $f upload -Client $client
+            $technical=$mode -in @('timeout','dns','status408','status429','status500','status503','getloss')
+            Check (!$result.success -and $result.retryable -eq $technical) ('retry classification: '+$mode)
+            Check ((Write-FDJson $result) -notmatch 'FAKE-ONLY|TEST ONLY') 'diagnostics omit raw exception messages'
+            [void](Run $f upload -Client $client -Clock $now.AddMinutes(2))
+            Check ($fake.PostCalls -eq $(if($technical){2}else{1})) ('retry allowed only for technical failure: '+$mode)
+        }finally{$client.Dispose()}
+    }
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$fake.Mode='loss';$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        [void](Run $f upload -Client $client)
+        foreach($name in @('second.png','third.png')){
+            $file=Join-Path $f.Dir $name;[IO.File]::WriteAllBytes($file,[byte[]]@(1,2,3,4,255));$fake.Mode='success'
+            $other=Run $f upload -Client $client -File $file
+            Check ($other.success -and $other.attempts -eq 1) 'uncertain first file does not block other files or consume their budget'
+        }
+    }finally{$client.Dispose()}
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$fake.Mode='loss';$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        [void](Run $f upload -Client $client)
+        $retryFile=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.retries.json)[0].FullName
+        $raw=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($retryFile));$key=@($raw.files.Keys)[0]
+        $raw.files[$key].status='uploading';$raw.files[$key].nextAt=$now.AddMinutes(6).ToString('O');$raw.files[$key].history[0].diagnostic='interrupted'
+        [IO.File]::WriteAllText($retryFile,(Write-FDJson $raw))
+        $main=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.json|Where-Object{$_.Name -notlike '*.retries.json'})[0].FullName
+        $raw=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($main));$raw.tasks[(Hash-FD 'task')].phase='uploading'
+        [IO.File]::WriteAllText($main,(Write-FDJson $raw))
+        Check ((Run $f resume -Clock $now.AddSeconds(359)).code -eq 'retry_wait') 'interrupted reservation preserves conservative interval'
+        $fake.Mode='success';$recovered=Run $f upload -Client $client -Clock $now.AddMinutes(6)
+        Check ($recovered.success -and $recovered.attempts -eq 2 -and $recovered.previousDeliveryUncertain -and $fake.PostCalls -eq 2) 'crash recovery retains count and earlier uncertainty'
+        $raw=$script:FDJson.DeserializeObject([IO.File]::ReadAllText($retryFile));$raw.files[$key].nextAt=$now.ToString('O')
+        [IO.File]::WriteAllText($retryFile,(Write-FDJson $raw))
+        Check ((Run $f upload -Client $client -Clock $now.AddMinutes(10)).code -eq 'retry_state_invalid' -and $fake.PostCalls -eq 2) 'invalid persisted interval cannot allow early retry'
+    }finally{$client.Dispose()}
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        Remove-Item Env:FILE_API_KEY
+        $invalid=Run $f upload -Client $client
+        Check ($invalid.code -eq 'credentials_unavailable' -and !$invalid.retryable -and $fake.PostCalls -eq 0) 'invalid local credential never starts retry budget or POST'
+    }finally{$env:FILE_API_KEY=$fakeKey;$client.Dispose()}
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$fake.Mode='loss';$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        [void](Run $f upload -Client $client)
+        $retryFile=@(Get-ChildItem -LiteralPath (Join-Path $f.Dir state) -Filter *.retries.json)[0].FullName
+        [IO.File]::WriteAllText($retryFile,'{invalid')
+        Check ((Run $f upload -Client $client -Clock $now.AddMinutes(5)).code -eq 'retry_state_invalid' -and $fake.PostCalls -eq 1) 'corrupt retry state cannot authorize another POST'
+    }finally{$client.Dispose()}
+    $f=Fixture;Activate $f;$fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        $script:nested=$null;$fake.OnPost=[Action]{$script:nested=Run $f upload -Client $client}
+        Check ((Run $f upload -Client $client).success -and $script:nested.code -eq 'state_busy' -and $fake.PostCalls -eq 1) 'scope lock prevents concurrent duplicate POST'
+    }finally{$client.Dispose()}
     $f=Fixture;Activate $f;[void](Run $f record -Outcome denied)
     $info.Arguments='-NoProfile -ExecutionPolicy RemoteSigned -File "'+$helper+'" -Action resume -Channel chat -TaskId task -UserAuthorized -Config "'+$f.Config+'"'
     $child=[Diagnostics.Process]::Start($info)
@@ -225,6 +310,13 @@ try{
         $json=$script:FDJson.DeserializeObject($out)
         Check ($child.ExitCode -eq 0 -and $json.success -and $json.mayUpload -and !$err) 'CLI exposes explicit authorized resume'
     }finally{$child.Dispose()}
+    $f=Fixture;Activate $f;$savedWriter=(Get-Command Save-FD -CommandType Function).ScriptBlock
+    $fake=[FileDropFakeHttp]::new();$client=[Net.Http.HttpClient]::new($fake)
+    try{
+        Set-Item -Path Function:\Save-FD -Value {param($State,$File) if($File.EndsWith('.retries.json')){throw 'TEST ONLY retry reservation write failure'}; & $savedWriter $State $File}
+        $result=Run $f upload -Client $client
+        Check (!$result.success -and $fake.PostCalls -eq 0 -and $result.code -eq 'retry_state_save_failed') 'counter reservation must persist before any POST'
+    }finally{Set-Item -Path Function:\Save-FD -Value $savedWriter;$client.Dispose()}
     $f=Fixture;$savedWriter=(Get-Command Save-FD -CommandType Function).ScriptBlock
     try{
         Set-Item -Path Function:\Save-FD -Value {param($State,$File) throw 'TEST ONLY simulated state write failure'}
