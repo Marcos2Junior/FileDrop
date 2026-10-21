@@ -31,7 +31,7 @@ O agente abre uma janela local. Preencha:
 
 Clique em **Salvar**. O configurador grava os arquivos necessários automaticamente fora do Git e protege a chave para seu usuário do Windows com DPAPI. Não cole a chave na conversa. Nenhum arquivo é enviado durante o onboarding.
 
-É necessário um desktop Windows interativo. Se uma política bloquear scripts, obtenha execução autorizada pelas regras do computador; o plugin não altera essa política. [Configuração e atualização](skills/filedrop/setup.md).
+É necessário um desktop Windows interativo. Se o PowerShell estiver `Restricted`, o agente pode usar `RemoteSigned` somente nos processos do FileDrop com sua autorização, sem pedir de novo a cada uso. Isso não altera a política permanente nem supera regras de organização. [Configuração e atualização](skills/filedrop/setup.md).
 
 ### 3. Peça uma entrega
 
@@ -67,7 +67,7 @@ O pacote da API depende do Hosting Bundle .NET 9 x64. Publicação e configuraç
 
 | Sintoma | Confira |
 | --- | --- |
-| Scripts desabilitados | Execução autorizada pela política local |
+| Scripts desabilitados | Autorizar `RemoteSigned` somente nos processos do FileDrop; GPO/assinatura continuam valendo |
 | 401 | Chave do cliente igual a `Files__ApiKey` do servidor |
 | 413 | Arquivo até 100 MiB; limite IIS/proxy de pelo menos 104923136 bytes |
 | Certificado/redirect | URL final direta e certificado confiável |

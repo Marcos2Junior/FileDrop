@@ -18,6 +18,22 @@ Na janela, informe o endereço final com `/files`, a chave de POST e uma pasta e
 
 **Salvar** valida e grava a configuração, sem testar rede ou enviar arquivos. **Cancelar** não grava. O configurador não instala runtime, altera políticas, permissões ou variáveis globais.
 
+## Execução no Windows
+
+O agente consulta `Get-ExecutionPolicy -List` no Windows PowerShell 5.1 antes da primeira execução, reutilizando uma consulta recente da mesma tarefa. Se scripts já puderem executar, usa o comando normal.
+
+Quando a política efetiva for `Restricted`, com `MachinePolicy` e `UserPolicy` indefinidas, pode usar `-ExecutionPolicy RemoteSigned` somente no processo que executa `Configure-FileDrop.ps1` ou `filedrop.ps1`, desde que o usuário tenha autorizado essa liberação. A autorização vale para configuração e uso do FileDrop na conversa; não é necessário pedir novamente a cada comando. Se ainda não houver autorização, peça uma vez, explicando o alcance limitado.
+
+Exemplo de abertura nesse caso:
+
+```powershell
+powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File "<plugin>/skills/filedrop/scripts/Configure-FileDrop.ps1"
+```
+
+Nas chamadas de entrega, acrescente a mesma opção antes de `-File`. A política temporária termina com o processo; não use `Set-ExecutionPolicy` em `CurrentUser`/`LocalMachine`, `Bypass`, `Unrestricted` ou mudanças de GPO. Ela não autoriza executar scripts externos ao FileDrop, mudar permissões, desativar controles de segurança ou substituir uma recusa de operação. Não desbloqueie arquivos baixados automaticamente. Se GPO, assinatura ou acesso impedirem a execução, relate o motivo e pare; não tente outra forma de contornar o bloqueio.
+
+O botão **Configurar agora** do Codex inicia a skill numa conversa; o formulário local abre quando o agente executa o comando. Se o clique não iniciar a conversa, selecione FileDrop e peça `Execute o onboarding do FileDrop.` Não presuma que esse problema do botão foi causado pelo PowerShell. Uma instância em andamento deve concluir antes de outra tentativa.
+
 ## Onde os dados ficam
 
 Por padrão, em `%LOCALAPPDATA%\FileDropSkill`:
@@ -75,7 +91,7 @@ Isso não testa credencial, rede ou entrega. O onboarding também não faz uploa
 
 O helper confere caminho final, limite de 100 MiB, origem da resposta, expiração e SHA-256 do download integral. Usa streaming no cliente e timeout total de quatro minutos. A API precisa retornar `X-FileDrop-Expires-At`. A saída é JSON; falha retorna código 1. Não há redirects nem retry automático.
 
-Estado ocupado/corrompido ou entrega incerta bloqueia nova ação; investigue sem apagar o estado para forçar reenvio. Se a política bloquear scripts, pare e obtenha execução autorizada, sem bypass automático.
+Estado ocupado/corrompido ou entrega incerta bloqueia nova ação; investigue sem apagar o estado para forçar reenvio. Para `Restricted`, siga a liberação temporária autorizada descrita acima. Outros bloqueios de execução exigem resolver a causa, sem novas tentativas equivalentes.
 
 ## Remover
 

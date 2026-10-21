@@ -33,9 +33,11 @@ powershell.exe -NoProfile -File tests/skill/Test-FileDropSetup.ps1
 
 O primeiro cobre política de fallback e upload/GET com transporte fake. O segundo verifica gravação, chave DPAPI, preservação da configuração/estado, rotação, validação e concorrência. As fixtures têm somente credenciais fictícias e não abrem a janela nem acessam a rede.
 
-Validação da versão 1.2.0: **56 asserções do helper e 42 do onboarding aprovadas** no Windows PowerShell 5.1, com fixtures isoladas, credenciais fictícias e transporte fake. A execução ocorreu fora do sandbox após autorização específica, com RemoteSigned somente nos processos de teste; nenhuma política permanente foi alterada. Sintaxe e conteúdo dos pacotes também foram conferidos. A janela instalada ainda exige verificação manual.
+Validação da versão 1.2.0: **56 asserções do helper e 42 do onboarding aprovadas** no Windows PowerShell 5.1, com fixtures isoladas, credenciais fictícias e transporte fake. A execução ocorreu fora do sandbox após autorização específica, com RemoteSigned somente nos processos de teste; nenhuma política permanente foi alterada. Sintaxe e conteúdo dos pacotes também foram conferidos. O salvamento pela janela e o botão de onboarding do host ainda exigem verificação manual.
 
-Não altere a política de execução para rodar testes sem autorização correspondente. Rede real, IIS, interface gráfica instalada e criação de junction real exigem validação separada. O onboarding nativo só fica verificado no host depois de instalar o pacote e executar sua configuração.
+A versão 1.2.1 altera somente instruções, documentação e manifesto: permite `RemoteSigned` autorizado apenas nos processos do FileDrop quando necessário, sem pedir confirmação repetida na conversa. Os scripts e a API permanecem iguais. A janela da versão 1.2.0 abriu após autorização dessa opção e encerrou com `cancelled`, sem confirmação de gravação; o botão de onboarding do host ainda não foi validado. As skills, referências e conteúdo do ZIP foram conferidos estaticamente para 1.2.1; as suítes acima não foram repetidas nesta alteração de instruções.
+
+Não altere a política de execução para rodar testes sem autorização correspondente. Rede real, IIS, botão de onboarding do host e criação de junction real exigem validação separada. O onboarding nativo só fica verificado no host depois de instalar o pacote e executar sua configuração.
 
 ## Atualizar os dois pacotes distribuídos
 
